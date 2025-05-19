@@ -1,5 +1,4 @@
-﻿
-using AngleSharp.Dom;
+﻿using AngleSharp.Dom;
 using AngleSharp.Dom.Html;
 using AngleSharp.Parser.Html;
 using Playnite.SDK;
@@ -7,37 +6,47 @@ using Playnite.SDK.Models;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
-
 using HttpCookie = Playnite.SDK.HttpCookie;
 
 namespace StoveLibrary.Services
 {
-
     public class StoveApi
     {
         private const int ExtraSettlingDelayMs = 1200;
+
+        /* ───── icon filename filters ───── */
+        private static readonly Regex PositiveIconRegex = new Regex(
+            @"(타이틀섬네일|title[_\-]?thumbnail|아이콘|280[_\-]280)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex NegativeBannerRegex = new Regex(
+            @"(배경|background|bg)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex SquareWidthRegex = new Regex(
+            @"\bw-\[(?:7|8|9|10|11)(?:\.\d+)?rem\]",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private readonly ILogger              logger   = LogManager.GetLogger();
         private readonly IPlayniteAPI         api;
         private readonly StoveLibrarySettings settings;
 
-        /* ──────────────────────────────────────────────────────────── */
         public StoveApi(IPlayniteAPI playniteApi, StoveLibrarySettings pluginSettings)
         {
             api      = playniteApi;
             settings = pluginSettings;
         }
 
-        /* ──────────────────────────────────────────────────────────── */
-        /*  PUBLIC FACADE                                               */
-        /* ──────────────────────────────────────────────────────────── */
+        /*──────────────────── PUBLIC FACADE ────────────────────*/
 
         public List<GameMetadata> GetOwnedGames(string rawProfileUrl)
         {
             var owned = new List<GameMetadata>();
+
             if (string.IsNullOrWhiteSpace(rawProfileUrl))
             {
                 logger.Warn("[STOVE] Blank profile URL.");
@@ -45,59 +54,53 @@ namespace StoveLibrary.Services
             }
 
             var gamesUrl = BuildGamesUrl(rawProfileUrl);
-            logger.Info($"[STOVE] Fetching profile list → {gamesUrl}");
-
-            var html = DownloadWithWebView(gamesUrl, "/en/games/");
+            var html     = DownloadWithWebView(gamesUrl, "/en/games/");
             if (string.IsNullOrEmpty(html))
-            {
-                logger.Warn("[STOVE] Profile page returned empty HTML after WebView load.");
                 return owned;
-            }
 
-            var ids = ExtractGameIds(html);
-            logger.Info($"[STOVE] Found {ids.Count} game products on profile page.");
+            var entries = ExtractGameEntries(html);
+            logger.Info($"[STOVE] Found {entries.Count} games on profile page.");
 
-            foreach (var id in ids)
+            foreach (var kv in entries)
             {
+                var id    = kv.Key;
+                var thumb = kv.Value;
+
                 var meta = GetGameMetadata(id);
-                // Skip invalid/placeholder entries
-                if (meta != null &&
-                    !string.IsNullOrEmpty(meta.Name) &&
-                    !meta.Name.StartsWith("STOVE Game"))
+                if (meta == null || string.IsNullOrEmpty(meta.Name))
+                    continue;
+
+                if (!string.IsNullOrEmpty(thumb))
                 {
-                    owned.Add(meta);
+                    if (thumb.StartsWith("//")) thumb = "https:" + thumb;
+                    meta.CoverImage = new MetadataFile(thumb);
                 }
+                owned.Add(meta);
             }
             return owned;
         }
 
         public GameMetadata GetGameMetadata(string gameId)
         {
-            var gameUrl = $"https://store.onstove.com/en/games/{gameId}";
+            var url = $"https://store.onstove.com/en/games/{gameId}";
             try
             {
-                var page = DownloadWithWebView(gameUrl, "features=");
-                if (string.IsNullOrWhiteSpace(page) ||
-                    page.IndexOf("requested page cannot be found", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    logger.Info($"[STOVE] {gameUrl} returned not-found page.");
+                var html = DownloadWithWebView(url, "features=");
+                if (string.IsNullOrWhiteSpace(html) ||
+                    html.IndexOf("requested page cannot be found",
+                                 StringComparison.OrdinalIgnoreCase) >= 0)
                     return null;
-                }
 
-                return ParseGamePage(page, gameUrl, gameId);
+                return ParseGamePage(html, url, gameId);
             }
             catch (Exception ex)
             {
-                logger.Error(ex, $"[STOVE] Failed to get metadata for {gameUrl}");
+                logger.Error(ex, $"[STOVE] metadata fetch failed for {url}");
                 return null;
             }
         }
 
-        /* ──────────────────────────────────────────────────────────── */
-        /*  INTERNAL HELPERS                                            */
-        /* ──────────────────────────────────────────────────────────── */
-
-        #region Profile-page helpers
+        /*──────────────────── PROFILE HELPERS ──────────────────*/
 
         private static string BuildGamesUrl(string input)
         {
@@ -105,161 +108,171 @@ namespace StoveLibrary.Services
             if (uri.AbsolutePath.IndexOf("/game", StringComparison.OrdinalIgnoreCase) >= 0)
                 return uri.ToString();
 
-            var basePath = uri.GetLeftPart(UriPartial.Path).TrimEnd('/');
-            // Only list full games, no demos.
-            return $"{basePath}/game?types=GAME";
+            return uri.GetLeftPart(UriPartial.Path).TrimEnd('/') + "/game?types=GAME";
         }
 
-        private static List<string> ExtractGameIds(string html)
+        private static Dictionary<string, string> ExtractGameEntries(string html)
         {
-            var doc = new HtmlParser().Parse(html);
-            var ids = new HashSet<string>();
+            var doc  = new HtmlParser().Parse(html);
+            var dict = new Dictionary<string, string>();
 
-            foreach (var link in doc.QuerySelectorAll("a[href*='/en/games/']"))
+            foreach (var a in doc.QuerySelectorAll("a[href*='/en/games/']"))
             {
-                var href = link.GetAttribute("href") ?? string.Empty;
-                var m    = Regex.Match(href, "/en/games/(\\d+)");
-                if (!m.Success)
-                    continue;
+                var m = Regex.Match(a.GetAttribute("href") ?? "", "/en/games/(\\d+)");
+                if (!m.Success) continue;
 
-                IElement node = link.ParentElement;
-                string   type = null;
-                while (node != null)
-                {
-                    if (node.HasAttribute("productdetailtype"))
-                    {
-                        type = node.GetAttribute("productdetailtype");
-                        break;
-                    }
+                var id = m.Groups[1].Value;
+
+                /* skip DLC cards */
+                IElement node = a.ParentElement;
+                while (node != null && !node.HasAttribute("productdetailtype"))
                     node = node.ParentElement;
-                }
 
-                if (string.Equals(type, "DLC", StringComparison.OrdinalIgnoreCase))
+                if (node != null &&
+                    "DLC".Equals(node.GetAttribute("productdetailtype"),
+                                 StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                ids.Add(m.Groups[1].Value);
+                var src = a.ParentElement?.QuerySelector("img[src]")?.GetAttribute("src") ?? "";
+                if (!dict.ContainsKey(id)) dict[id] = src;
             }
-            return ids.ToList();
+            return dict;
         }
 
-        #endregion
+        /*────────────────── PRODUCT PAGE PARSE ─────────────────*/
 
-        #region Product-page parsing
-
-        private GameMetadata ParseGamePage(string html, string gameUrl, string gameId)
+        private GameMetadata ParseGamePage(string html, string url, string gameId)
         {
-            var doc = new HtmlParser().Parse(html);
-
+            var doc  = new HtmlParser().Parse(html);
             var meta = new GameMetadata
             {
                 Source    = new MetadataNameProperty("STOVE"),
                 GameId    = gameId,
-                Links     = new List<Link> { new Link("Store Page", gameUrl) },
+                Links     = new List<Link> { new Link("Store Page", url) },
                 Platforms = new HashSet<MetadataProperty>
-                {
-                    new MetadataSpecProperty("pc_windows")
-                }
+                            { new MetadataSpecProperty("pc_windows") }
             };
 
-            /* ── Name ──────────────────────────────────────────── */
+            /* name */
             var rawName = doc.QuerySelector("meta[property='og:title']")?.GetAttribute("content")
                        ?? doc.QuerySelector("title")?.TextContent
-                       ?? string.Empty;
+                       ?? "";
+            if (rawName.Contains("|")) rawName = rawName.Split('|')[0];
+            rawName = Regex.Replace(rawName, "\\s*\\|\\s*STOVE STORE\\s*$",
+                                    "", RegexOptions.IgnoreCase).Trim();
+            meta.Name = string.IsNullOrWhiteSpace(rawName) ? "STOVE Game " + gameId : rawName;
 
-            if (rawName.Contains("|"))
-                rawName = rawName.Split('|')[0];
-
-            rawName = Regex.Replace(rawName,
-                                    "\\s*\\|\\s*STOVE STORE\\s*$",
-                                    "",
-                                    RegexOptions.IgnoreCase).Trim();
-
-            meta.Name = string.IsNullOrWhiteSpace(rawName)
-                        ? $"STOVE Game {gameId}"
-                        : rawName;
-
-            /* ── Details (Genre, Creator, etc.) ───────────────── */
-            foreach (var (label, value) in ReadDlPairs(doc))
+            /* details */
+            foreach (var pair in ReadDlPairs(doc))
             {
+                var label = pair.label;
+                var value = pair.value;
+
                 switch (label)
                 {
                     case "genre":     meta.Genres     = NameSet(value); break;
                     case "creator":   meta.Developers = NameSet(value); break;
                     case "publisher": meta.Publishers = NameSet(value); break;
                     case "release":
-                        if (DateTime.TryParseExact(value,
-                                                   "yyyy.MM.dd",
-                                                   null,
-                                                   System.Globalization.DateTimeStyles.None,
-                                                   out var d))
-                            meta.ReleaseDate = new ReleaseDate(d);
+                        DateTime dt;
+                        if (DateTime.TryParseExact(value, "yyyy.MM.dd",
+                                                   CultureInfo.InvariantCulture,
+                                                   DateTimeStyles.None, out dt))
+                            meta.ReleaseDate = new ReleaseDate(dt);
                         break;
                 }
             }
 
-            /* ── Tags ──────────────────────────────────────────── */
-            var tagEls = doc.QuerySelectorAll("a[href*='features=']")
-                            .Select(a => a.TextContent.Trim())
-                            .Where(t => t.StartsWith("#"))
-                            .Select(t => t.Substring(1).Trim())
-                            .Where(t => t.Length > 0)
-                            .Distinct();
-
-            if (tagEls.Any())
-            {
+            /* tags */
+            var tags = doc.QuerySelectorAll("a[href*='features=']")
+                          .Select(a => a.TextContent.Trim())
+                          .Where(t => t.StartsWith("#"))
+                          .Select(t => t.Substring(1).Trim())
+                          .Distinct()
+                          .ToList();
+            if (tags.Count > 0)
                 meta.Tags = new HashSet<MetadataProperty>(
-                                tagEls.Select(t => new MetadataNameProperty(t)));
-            }
+                                tags.Select(t => new MetadataNameProperty(t)));
 
-            /* ── Description ──────────────────────────────────── */
+            /* description */
             meta.Description = SelectProductDescription(doc);
 
-            /* ── Cover image ──────────────────────────────────── */
-            var coverSrc = doc.QuerySelector("meta[property='og:image']")?.GetAttribute("content");
-            if (string.IsNullOrEmpty(coverSrc))
+            /* icon */
+            var icon = FindIcon(doc);
+            if (!string.IsNullOrEmpty(icon))
             {
-                var imgEl = doc.QuerySelector("img[src*='타이틀섬네일']")
-                         ?? doc.QuerySelector("img[src*='cloudfront']")
-                         ?? doc.QuerySelector("img[src*='cdn.onstove.com']")
-                         ?? doc.QuerySelector("img[src*='image.onstove.com']");
-                coverSrc = imgEl?.GetAttribute("src");
-            }
-
-            if (!string.IsNullOrEmpty(coverSrc))
-            {
-                if (coverSrc.StartsWith("//"))
-                    coverSrc = "https:" + coverSrc;
-
-                meta.CoverImage = new MetadataFile(coverSrc);
+                if (icon.StartsWith("//")) icon = "https:" + icon;
+                meta.Icon = new MetadataFile(icon);
             }
 
             return meta;
         }
 
+        /*─────────────────── ICON SELECTION ───────────────────*/
+
+        private static string FindIcon(IHtmlDocument doc)
+        {
+            foreach (var div in doc.QuerySelectorAll("div.absolute.overflow-hidden"))
+            {
+                var cls = div.GetAttribute("class") ?? "";
+
+                if (!Regex.IsMatch(cls, @"h-\[(?:7|8|9|10|11)(?:\.\d+)?rem\]",
+                                RegexOptions.IgnoreCase)) continue;
+                if (!Regex.IsMatch(cls, @"w-\[(?:7|8|9|10|11)(?:\.\d+)?rem\]",
+                                RegexOptions.IgnoreCase)) continue;
+
+                var img = div.QuerySelector("img[src]");
+                if (img == null) continue;
+
+                var src = img.GetAttribute("src") ?? "";
+                if (string.IsNullOrEmpty(src)) continue;
+
+                if (NegativeBannerRegex.IsMatch(src)) continue;
+
+                return src;
+            }
+
+            foreach (var img in doc.QuerySelectorAll("img[src]"))
+            {
+                var src = img.GetAttribute("src") ?? "";
+                if (!PositiveIconRegex.IsMatch(src)) continue;
+                if (NegativeBannerRegex.IsMatch(src)) continue;
+
+                IElement n = img.ParentElement;
+                bool inCarousel = false;
+                while (n != null)
+                {
+                    var c = n.GetAttribute("class") ?? "";
+                    if (c.IndexOf("carousel", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        inCarousel = true; break;
+                    }
+                    n = n.ParentElement;
+                }
+                if (!inCarousel) return src;
+            }
+
+            return string.Empty;
+        }
+
+        /*──────────────── DESCRIPTION + MISC HELPERS ──────────*/
+
         private static string SelectProductDescription(IHtmlDocument doc)
         {
             foreach (var view in doc.QuerySelectorAll("div.inds-editor-view"))
             {
-                var heading = view.ParentElement?.QuerySelector("h3");
-                var txt     = heading?.TextContent?.Trim() ?? string.Empty;
-
-                if (Regex.IsMatch(txt, "product\\s+description", RegexOptions.IgnoreCase))
+                var head = view.ParentElement?.QuerySelector("h3")?.TextContent.Trim() ?? "";
+                if (Regex.IsMatch(head, "product\\s+description", RegexOptions.IgnoreCase))
                     return view.InnerHtml.Trim();
             }
 
-            string bestHtml = null;
-            int    bestLen  = 0;
-
+            /* fallback – longest text block */
+            string bestHtml = null; int bestLen = 0;
             foreach (var view in doc.QuerySelectorAll("div.inds-editor-view"))
             {
-                var len = Regex.Replace(view.TextContent ?? string.Empty, "\\s+", "").Length;
-                if (len > bestLen)
-                {
-                    bestLen  = len;
-                    bestHtml = view.InnerHtml.Trim();
-                }
+                var len = Regex.Replace(view.TextContent ?? "", "\\s+", "").Length;
+                if (len > bestLen) { bestLen = len; bestHtml = view.InnerHtml.Trim(); }
             }
-
             return bestHtml;
         }
 
@@ -267,124 +280,76 @@ namespace StoveLibrary.Services
         {
             var nodes = doc.QuerySelectorAll("dl dt, dl dd").ToArray();
             for (int i = 0; i < nodes.Length - 1; i += 2)
-            {
-                var lbl = nodes[i]?.TextContent?.Trim().ToLowerInvariant();
-                var val = nodes[i + 1]?.InnerHtml?.Trim();
-                if (!string.IsNullOrEmpty(lbl) && !string.IsNullOrEmpty(val))
-                    yield return (lbl, val);
-            }
+                yield return (nodes[i].TextContent.Trim().ToLowerInvariant(),
+                              nodes[i + 1].InnerHtml.Trim());
         }
 
         private static HashSet<MetadataProperty> NameSet(string htmlAnchor)
         {
-            var text = StripAnchor(htmlAnchor);
-            return new HashSet<MetadataProperty>
-            {
-                new MetadataNameProperty(text)
-            };
+            var doc = new HtmlParser().Parse("<div>" + htmlAnchor + "</div>");
+            var txt = doc.QuerySelector("a")?.TextContent.Trim() ?? htmlAnchor.Trim();
+            return new HashSet<MetadataProperty> { new MetadataNameProperty(txt) };
         }
 
-        private static string StripAnchor(string htmlAnchor)
-        {
-            var doc = new HtmlParser().Parse($"<div>{htmlAnchor}</div>");
-            return doc.QuerySelector("a")?.TextContent.Trim() ?? htmlAnchor.Trim();
-        }
+        /*───────────────────── WEBVIEW FETCH ──────────────────*/
 
-        #endregion
-
-        #region WebView download helper (adult-gate aware)
-
-        private string DownloadWithWebView(string url, string waitForSubstring)
+        private string DownloadWithWebView(string url, string waitFor)
         {
             try
             {
-                using (var view = api.WebViews.CreateOffscreenView())
+                using (var vw = api.WebViews.CreateOffscreenView())
                 {
-                    /* Inject ADULT_GAME_AGREE cookie if the user opted in */
-                    if (settings?.AllowAdultGames == true)
-                    {
-                        var adultCookie = new HttpCookie
-                        {
-                            Name    = "ADULT_GAME_AGREE",
-                            Value   = "Y",
-                            Domain  = ".onstove.com",
-                            Path    = "/",
-                            Expires = DateTime.UtcNow.AddYears(1)
-                        };
+                    if (settings != null && settings.AllowAdultGames)
+                        vw.SetCookies("https://store.onstove.com",
+                            new HttpCookie { Name = "ADULT_GAME_AGREE", Value = "Y",
+                                             Domain = ".onstove.com", Path = "/",
+                                             Expires = DateTime.UtcNow.AddYears(1) });
 
-                        // IWebView.SetCookies(string url, HttpCookie cookie)
-                        view.SetCookies("https://store.onstove.com", adultCookie);
-                        logger.Debug("[STOVE] Injected ADULT_GAME_AGREE=Y cookie");
-                    }
-
-                    view.Navigate(url);
-
-                    var sw        = Stopwatch.StartNew();
-                    string source = string.Empty;
-                    bool triedGate = false;
+                    vw.Navigate(url);
+                    var sw = Stopwatch.StartNew(); string src = ""; bool gate = false;
 
                     while (sw.Elapsed < TimeSpan.FromSeconds(30))
                     {
                         Thread.Sleep(300);
-                        source = view.GetPageSource();
+                        src = vw.GetPageSource();
 
-                        // If auto-cookie wasn’t injected, fall back to old redirect dance
-                        if (settings?.AllowAdultGames != true &&
-                            !triedGate &&
-                            (source.IndexOf("/restrictions/agree",
-                                            StringComparison.OrdinalIgnoreCase) >= 0 ||
-                             source.IndexOf("not suitable for players under the age",
-                                            StringComparison.OrdinalIgnoreCase) >= 0))
+                        if ((settings == null || !settings.AllowAdultGames) &&
+                            !gate &&
+                            (src.IndexOf("/restrictions/agree",
+                                         StringComparison.OrdinalIgnoreCase) >= 0))
                         {
-                            triedGate = true;
-                            logger.Debug("[STOVE] Detected adult gate – navigating to agree endpoint.");
-
-                            // Try to pull product id from original URL or page source
-                            var pidMatch = Regex.Match(url, "/games/(\\d+)", RegexOptions.IgnoreCase);
-                            var pid      = pidMatch.Success ? pidMatch.Groups[1].Value : null;
-
-                            if (string.IsNullOrEmpty(pid))
+                            gate = true;
+                            var m = Regex.Match(url, "/games/(\\d+)");
+                            var id = m.Success ? m.Groups[1].Value :
+                                     Regex.Match(src, "productNo=(\\d+)").Groups[1].Value;
+                            if (!string.IsNullOrEmpty(id))
                             {
-                                pidMatch = Regex.Match(source, "productNo=(\\d+)");
-                                pid      = pidMatch.Success ? pidMatch.Groups[1].Value : null;
-                            }
-
-                            if (!string.IsNullOrEmpty(pid))
-                            {
-                                var agreeUrl = $"https://store.onstove.com/en/restrictions/agree?productNo={pid}";
-                                view.Navigate(agreeUrl);
+                                vw.Navigate("https://store.onstove.com/en/restrictions/agree?productNo=" + id);
                                 Thread.Sleep(500);
                                 continue;
                             }
                         }
 
-                        if (!string.IsNullOrEmpty(source) &&
-                            (waitForSubstring == null ||
-                             source.IndexOf(waitForSubstring,
-                                            StringComparison.OrdinalIgnoreCase) >= 0))
-                        {
+                        if (!string.IsNullOrEmpty(src) &&
+                            (waitFor == null ||
+                             src.IndexOf(waitFor, StringComparison.OrdinalIgnoreCase) >= 0))
                             break;
-                        }
                     }
 
-                    if (!string.IsNullOrEmpty(source))
+                    if (!string.IsNullOrEmpty(src))
                     {
                         Thread.Sleep(ExtraSettlingDelayMs);
-                        var updated = view.GetPageSource();
-                        if (!string.IsNullOrEmpty(updated))
-                            source = updated;
+                        var upd = vw.GetPageSource();
+                        if (!string.IsNullOrEmpty(upd)) src = upd;
                     }
-
-                    return source;
+                    return src;
                 }
             }
             catch (Exception ex)
             {
-                logger.Error(ex, $"[STOVE] WebView download failed for {url}");
+                logger.Error(ex, "[STOVE] WebView download failed: " + url);
                 return string.Empty;
             }
         }
-
-        #endregion
     }
 }
