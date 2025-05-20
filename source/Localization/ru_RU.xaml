@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" 
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!-- StoveLibrary -->
+    <sys:String x:Key="LOCStoveLibrary">Библиотека STOVE</sys:String>
+    <sys:String x:Key="LOCStoveAuthError">Ошибка аутентификации с STOVE!</sys:String>
+    <sys:String x:Key="LOCStoveImportError">Ошибка импорта библиотеки STOVE!</sys:String>
+    
+    <!-- StoveLibrarySettingsView -->
+    <sys:String x:Key="LOCStoveProfileUrl">URL профиля:</sys:String>
+    <sys:String x:Key="LOCStoveImportMetadata">Импортировать метаданные</sys:String>
+    <sys:String x:Key="LOCStoveImportTags">Импортировать теги</sys:String>
+    <sys:String x:Key="LOCStoveAllowAdult">Разрешить игры STOVE 18+</sys:String>
+    <sys:String x:Key="LOCStoveAllowAdultTooltip">Если отмечено, плагин установит cookie ADULT_GAME_AGREE заранее, чтобы игры для взрослых можно было сканировать без страницы подтверждения.</sys:String>
+    
+    <!-- StoveClient -->
+    <sys:String x:Key="LOCStoveClientNotFound">Клиент STOVE не найден!</sys:String>
+    
+    <!-- StoveLibraryExeSelection -->
+    <sys:String x:Key="LOCStoveLibraryExeSelectionTitle">Выберите исполняемый файл для игры</sys:String>
+</ResourceDictionary>

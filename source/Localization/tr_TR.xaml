@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" 
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!-- StoveLibrary -->
+    <sys:String x:Key="LOCStoveLibrary">STOVE Kütüphanesi</sys:String>
+    <sys:String x:Key="LOCStoveAuthError">STOVE ile kimlik doğrulama başarısız oldu!</sys:String>
+    <sys:String x:Key="LOCStoveImportError">STOVE kütüphanesi içe aktarılırken hata oluştu!</sys:String>
+    
+    <!-- StoveLibrarySettingsView -->
+    <sys:String x:Key="LOCStoveProfileUrl">Profil URL'si:</sys:String>
+    <sys:String x:Key="LOCStoveImportMetadata">Meta verileri içe aktar</sys:String>
+    <sys:String x:Key="LOCStoveImportTags">Etiketleri içe aktar</sys:String>
+    <sys:String x:Key="LOCStoveAllowAdult">18+ STOVE başlıklarına izin ver</sys:String>
+    <sys:String x:Key="LOCStoveAllowAdultTooltip">İşaretlenirse, eklenti yetişkin oyunlarının onay sayfası olmadan taranabilmesi için ADULT_GAME_AGREE çerezini önceden ayarlayacaktır.</sys:String>
+    
+    <!-- StoveClient -->
+    <sys:String x:Key="LOCStoveClientNotFound">STOVE istemcisi bulunamadı!</sys:String>
+    
+    <!-- StoveLibraryExeSelection -->
+    <sys:String x:Key="LOCStoveLibraryExeSelectionTitle">Oynama eylemi için çalıştırılabilir dosyayı seçin</sys:String>
+</ResourceDictionary>

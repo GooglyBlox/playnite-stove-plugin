@@ -19,23 +19,23 @@
         </Grid.RowDefinitions>
 
         <StackPanel Orientation="Horizontal" Grid.Row="0">
-            <Label Content="Profile URL:" VerticalAlignment="Center"/>
+            <Label Content="{DynamicResource LOCStoveProfileUrl}" VerticalAlignment="Center"/>
             <TextBox Width="420"
                      Text="{Binding Settings.ProfileUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      Margin="10,0,0,0"/>
         </StackPanel>
 
         <CheckBox Grid.Row="2"
-                  Content="Import metadata"
+                  Content="{DynamicResource LOCStoveImportMetadata}"
                   IsChecked="{Binding Settings.ImportMetadata, Mode=TwoWay}"/>
 
         <CheckBox Grid.Row="4"
-                  Content="Import tags"
+                  Content="{DynamicResource LOCStoveImportTags}"
                   IsChecked="{Binding Settings.ImportTags, Mode=TwoWay}"/>
 
         <CheckBox Grid.Row="6"
-                  Content="Allow 18+ STOVE titles"
+                  Content="{DynamicResource LOCStoveAllowAdult}"
                   IsChecked="{Binding Settings.AllowAdultGames, Mode=TwoWay}"
-                  ToolTip="If checked, the plugin will set the ADULT_GAME_AGREE cookie up-front so adult games can be scanned without the confirmation page."/>
+                  ToolTip="{DynamicResource LOCStoveAllowAdultTooltip}"/>
     </Grid>
 </UserControl>

@@ -40,7 +40,7 @@ namespace StoveLibrary
             {
                 PlayniteApi.Notifications.Add(new NotificationMessage(
                     "stove-profile-missing",
-                    "Please enter your STOVE profile URL in the plugin settings.",
+                    PlayniteApi.Resources.GetString("LOCStoveImportError"),
                     NotificationType.Error,
                     () => OpenSettingsView()));
                 yield break;
