@@ -24,4 +24,4 @@ Supported Fields:
 * Launch/Client Integration
 
 ## Translations
-You can help to translate the extensions do different languages via the project by opening a pull request.
+You can help to translate the extensions into different languages by opening a pull request.
