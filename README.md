@@ -20,7 +20,6 @@ Supported Fields:
 * Description
 * Genres
 * Tags (from game features)
-* Platforms (PC Windows)
 * Launch/Client Integration
 
 ## Translations
