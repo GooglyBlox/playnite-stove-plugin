@@ -2,7 +2,7 @@
 Extension for [Playnite](https://playnite.link).  
 
 ## Informations
-The plugin can get games from STOVE.
+The plugin fetches games from your STOVE library.
 
 <a href="https://github.com/GooglyBlox/playnite-stove-plugin/blob/master/screenshots/plugin_settings.png?raw=true">
   <picture>
@@ -19,7 +19,7 @@ Supported Fields:
 * Links (Store Page)
 * Description
 * Genres
-* Tags (from game features)
+* Tags
 * Launch/Client Integration
 
 ## Translations
