@@ -22,3 +22,10 @@ Supported Fields:
 
 ## Translations
 You can help to translate the extension into different languages by opening a pull request.
+
+## Support
+If you find this plugin helpful, consider supporting my work:
+
+<a href="https://buymeacoffee.com/googl">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="40">
+</a>
