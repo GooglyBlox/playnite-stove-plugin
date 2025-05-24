@@ -4,10 +4,8 @@ Extension for [Playnite](https://playnite.link).
 ## Informations
 The plugin fetches games from your STOVE library.
 
-<a href="https://github.com/GooglyBlox/playnite-stove-plugin/blob/master/screenshots/plugin_settings.png?raw=true">
-  <picture>
-    <img alt="settings" src="https://github.com/GooglyBlox/playnite-stove-plugin/blob/master/screenshots/plugin_settings.png?raw=true" height="150px">
-  </picture>
+<a href="https://github.com/GooglyBlox/playnite-stove-plugin/raw/master/screenshots/plugin_settings.png">
+  <img alt="settings" src="https://github.com/GooglyBlox/playnite-stove-plugin/raw/master/screenshots/plugin_settings.png" height="150px">
 </a>
 
 Supported Fields:
