@@ -1,0 +1,13 @@
+AddonId: 'StoveLibrary_2a62a584-2cc3-4220-8da6-cf4ac588a439'
+Packages:
+  - Version: 1.0
+    RequiredApiVersion: 6.11.0
+    ReleaseDate: 2025-05-24
+    PackageUrl: https://github.com/GooglyBlox/playnite-stove-plugin/releases/download/v1.0/StoveLibrary_2a62a584-2cc3-4220-8da6-cf4ac588a439_0_1.pext
+    Changelog:
+      - Initial release
+      - Import games from STOVE library
+      - Metadata support for games, developers, publishers, release dates
+      - Icon and cover image support
+      - STOVE client integration
+      - 18+ content support with age verification
