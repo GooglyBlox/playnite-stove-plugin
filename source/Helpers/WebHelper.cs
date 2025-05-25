@@ -22,12 +22,15 @@ namespace StoveLibrary.Helpers
 
         public static SerializableCookie FromHttpCookie(HttpCookie cookie)
         {
+            if (cookie == null)
+                return null;
+
             return new SerializableCookie
             {
-                Name = cookie.Name,
-                Value = cookie.Value,
-                Domain = cookie.Domain,
-                Path = cookie.Path,
+                Name = cookie.Name ?? "",
+                Value = cookie.Value ?? "",
+                Domain = cookie.Domain ?? "",
+                Path = cookie.Path ?? "",
                 Expires = cookie.Expires,
                 HttpOnly = cookie.HttpOnly,
                 Secure = cookie.Secure
@@ -38,10 +41,10 @@ namespace StoveLibrary.Helpers
         {
             return new HttpCookie
             {
-                Name = Name,
-                Value = Value,
-                Domain = Domain,
-                Path = Path,
+                Name = Name ?? "",
+                Value = Value ?? "",
+                Domain = Domain ?? "",
+                Path = Path ?? "",
                 Expires = Expires,
                 HttpOnly = HttpOnly,
                 Secure = Secure
@@ -56,33 +59,53 @@ namespace StoveLibrary.Helpers
         // ── HTTP GET with optional Playnite cookies ─────────────────────────
         public static string DownloadString(string url, List<HttpCookie> cookies = null)
         {
-            var handler = new HttpClientHandler { CookieContainer = new CookieContainer() };
-
-            if (cookies != null)
+            if (string.IsNullOrWhiteSpace(url))
             {
-                foreach (var c in cookies)
-                {
-                    try
-                    {
-                        // convert Playnite.HttpCookie → System.Net.Cookie
-                        var domain = c.Domain?.TrimStart('.');
-                        if (string.IsNullOrEmpty(domain))
-                        {
-                            domain = new Uri(url).Host;
-                        }
-                        var ck = new Cookie(c.Name, c.Value, c.Path ?? "/", domain);
-                        handler.CookieContainer.Add(ck);
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Debug($"Failed to add cookie {c.Name}: {ex.Message}");
-                    }
-                }
-                Logger.Debug($"Added {cookies.Count} cookies to request");
+                Logger.Warn("[WebHelper] Empty URL provided");
+                return string.Empty;
             }
 
-            using (var client = new HttpClient(handler, disposeHandler: true))
+            HttpClientHandler handler = null;
+            HttpClient client = null;
+
+            try
             {
+                handler = new HttpClientHandler { CookieContainer = new CookieContainer() };
+
+                if (cookies != null)
+                {
+                    foreach (var c in cookies)
+                    {
+                        if (c == null)
+                            continue;
+
+                        try
+                        {
+                            // convert Playnite.HttpCookie → System.Net.Cookie
+                            var domain = c.Domain?.TrimStart('.');
+                            if (string.IsNullOrEmpty(domain))
+                            {
+                                if (Uri.TryCreate(url, UriKind.Absolute, out Uri uri))
+                                {
+                                    domain = uri.Host;
+                                }
+                                else
+                                {
+                                    continue;
+                                }
+                            }
+                            var ck = new Cookie(c.Name ?? "", c.Value ?? "", c.Path ?? "/", domain);
+                            handler.CookieContainer.Add(ck);
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Debug($"Failed to add cookie {c.Name}: {ex.Message}");
+                        }
+                    }
+                    Logger.Debug($"Added {cookies.Count} cookies to request");
+                }
+
+                client = new HttpClient(handler, disposeHandler: true);
                 client.Timeout = TimeSpan.FromSeconds(30);
 
                 // Add user agent to mimic a real browser
@@ -110,18 +133,41 @@ namespace StoveLibrary.Helpers
                     throw new TimeoutException($"Request to {url} timed out", ex);
                 }
             }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, $"[WebHelper] Error downloading from {url}");
+                return string.Empty;
+            }
+            finally
+            {
+                client?.Dispose();
+                handler?.Dispose();
+            }
         }
 
         // ── Cookie persistence helpers ──────────────────────────────────────
         public static void SaveCookiesToFile(string filePath, List<HttpCookie> cookies)
         {
+            if (string.IsNullOrWhiteSpace(filePath) || cookies == null)
+                return;
+
             try
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
-                var serializableCookies = cookies.Select(SerializableCookie.FromHttpCookie).ToList();
+                var directory = Path.GetDirectoryName(filePath);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                var serializableCookies = cookies
+                    .Where(c => c != null)
+                    .Select(SerializableCookie.FromHttpCookie)
+                    .Where(c => c != null)
+                    .ToList();
+
                 var json = JsonConvert.SerializeObject(serializableCookies, Formatting.Indented);
                 File.WriteAllText(filePath, json);
-                Logger.Debug($"Saved {cookies.Count} cookies to {filePath}");
+                Logger.Debug($"Saved {serializableCookies.Count} cookies to {filePath}");
             }
             catch (Exception ex)
             {
@@ -131,6 +177,9 @@ namespace StoveLibrary.Helpers
 
         public static List<HttpCookie> LoadCookiesFromFile(string filePath)
         {
+            if (string.IsNullOrWhiteSpace(filePath))
+                return new List<HttpCookie>();
+
             try
             {
                 if (!File.Exists(filePath))
@@ -140,8 +189,18 @@ namespace StoveLibrary.Helpers
                 }
 
                 var json = File.ReadAllText(filePath);
+                if (string.IsNullOrWhiteSpace(json))
+                {
+                    return new List<HttpCookie>();
+                }
+
                 var serializableCookies = JsonConvert.DeserializeObject<List<SerializableCookie>>(json);
-                var cookies = serializableCookies?.Select(c => c.ToHttpCookie()).ToList() ?? new List<HttpCookie>();
+                var cookies = serializableCookies?
+                    .Where(c => c != null)
+                    .Select(c => c.ToHttpCookie())
+                    .Where(c => c != null)
+                    .ToList() ?? new List<HttpCookie>();
+
                 Logger.Debug($"Loaded {cookies.Count} cookies from {filePath}");
                 return cookies;
             }
@@ -155,18 +214,51 @@ namespace StoveLibrary.Helpers
         // ── JSON persistence helpers ────────────────────────────────────────
         public static void SaveJsonToFile<T>(string filePath, T obj)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(filePath));
-            File.WriteAllText(filePath, JsonConvert.SerializeObject(obj, Formatting.Indented));
+            if (string.IsNullOrWhiteSpace(filePath) || obj == null)
+                return;
+
+            try
+            {
+                var directory = Path.GetDirectoryName(filePath);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                var json = JsonConvert.SerializeObject(obj, Formatting.Indented);
+                File.WriteAllText(filePath, json);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, $"Failed to save JSON to {filePath}");
+            }
         }
 
         public static T LoadJsonFromFile<T>(string filePath)
         {
-            if (!File.Exists(filePath))
+            if (string.IsNullOrWhiteSpace(filePath))
+                return default(T);
+
+            try
             {
+                if (!File.Exists(filePath))
+                {
+                    return default(T);
+                }
+
+                var json = File.ReadAllText(filePath);
+                if (string.IsNullOrWhiteSpace(json))
+                {
+                    return default(T);
+                }
+
+                return JsonConvert.DeserializeObject<T>(json);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, $"Failed to load JSON from {filePath}");
                 return default(T);
             }
-
-            return JsonConvert.DeserializeObject<T>(File.ReadAllText(filePath));
         }
     }
 }

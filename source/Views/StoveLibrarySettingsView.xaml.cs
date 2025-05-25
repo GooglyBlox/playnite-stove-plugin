@@ -1,4 +1,6 @@
-﻿using System.Windows.Controls;
+﻿using System;
+using System.Windows.Controls;
+using Playnite.SDK;
 
 namespace StoveLibrary.Views
 {
@@ -10,12 +12,35 @@ namespace StoveLibrary.Views
         {
             InitializeComponent();
 
-            ViewModel = new StoveLibrarySettingsViewModel(
-                            StoveLibrary.Instance ??
-                            new StoveLibrary(Playnite.SDK.API.Instance));
+            try
+            {
+                var instance = StoveLibrary.Instance;
+                if (instance == null && API.Instance != null)
+                {
+                    instance = new StoveLibrary(API.Instance);
+                }
 
-            ViewModel.Settings = settings;
-            DataContext        = ViewModel;
+                if (instance == null)
+                {
+                    throw new InvalidOperationException("Cannot create StoveLibrary instance - API not available");
+                }
+
+                ViewModel = new StoveLibrarySettingsViewModel(instance);
+
+                if (settings != null)
+                {
+                    ViewModel.Settings = settings;
+                }
+
+                DataContext = ViewModel;
+            }
+            catch (Exception ex)
+            {
+                LogManager.GetLogger().Error(ex, "[STOVE] Error initializing settings view");
+                // Create minimal fallback
+                ViewModel = null;
+                DataContext = settings;
+            }
         }
     }
 }
