@@ -26,6 +26,6 @@ You can help to translate the extension into different languages by opening a pu
 ## Support
 If you find this plugin helpful, consider supporting my work:
 
-<a href="https://buymeacoffee.com/googl">
-  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="40">
+<a href="https://ko-fi.com/googlyblox" target="_blank" rel="noopener noreferrer">
+  <img src="https://storage.ko-fi.com/cdn/kofi3.png?v=3" alt="Support me on Ko-fi" style="height: 41px !important; width: 174px !important; box-shadow: 0px 3px 2px 0px rgba(190, 190, 190, 0.5) !important; -webkit-box-shadow: 0px 3px 2px 0px rgba(190, 190, 190, 0.5) !important;">
 </a>
