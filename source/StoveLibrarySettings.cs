@@ -1,6 +1,7 @@
 ﻿using Playnite.SDK;
 using Playnite.SDK.Data;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 
 namespace StoveLibrary
 {
@@ -37,6 +38,10 @@ namespace StoveLibrary
 
     public class StoveLibrarySettingsViewModel : ObservableObject, ISettings
     {
+        private static readonly Regex ProfileUrlRegex = new Regex(
+            @"^https://profile\.onstove\.com/[a-zA-Z0-9_-]+/\d+(/.*)?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
         private StoveLibrary Plugin { get; }
         private StoveLibrarySettings EditingClone { get; set; }
 
@@ -75,7 +80,11 @@ namespace StoveLibrary
 
             if (string.IsNullOrWhiteSpace(Settings.ProfileUrl))
             {
-                errors.Add("Profile URL cannot be empty.");
+                errors.Add(Plugin.PlayniteApi.Resources.GetString("LOCStoveProfileUrlEmpty"));
+            }
+            else if (!ProfileUrlRegex.IsMatch(Settings.ProfileUrl.Trim()))
+            {
+                errors.Add(Plugin.PlayniteApi.Resources.GetString("LOCStoveProfileUrlInvalid"));
             }
 
             return errors.Count == 0;

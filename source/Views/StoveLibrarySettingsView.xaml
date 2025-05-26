@@ -20,9 +20,26 @@
 
         <StackPanel Orientation="Horizontal" Grid.Row="0">
             <Label Content="{DynamicResource LOCStoveProfileUrl}" VerticalAlignment="Center"/>
-            <TextBox Width="420"
-                     Text="{Binding Settings.ProfileUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                     Margin="10,0,0,0"/>
+            <Grid Width="420" Margin="10,0,0,0">
+                <TextBox x:Name="ProfileUrlTextBox"
+                         Text="{Binding Settings.ProfileUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                <TextBlock Text="{DynamicResource LOCStoveProfileUrlPlaceholder}"
+                           Foreground="Gray"
+                           Margin="4,0,0,0"
+                           VerticalAlignment="Center"
+                           IsHitTestVisible="False">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ElementName=ProfileUrlTextBox, Path=Text}" Value="">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
         </StackPanel>
 
         <CheckBox Grid.Row="2"
