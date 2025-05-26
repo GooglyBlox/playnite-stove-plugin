@@ -10,6 +10,9 @@
     
     <!-- StoveLibrarySettingsView -->
     <sys:String x:Key="LOCStoveProfileUrl">URL профиля:</sys:String>
+    <sys:String x:Key="LOCStoveProfileUrlPlaceholder">https://profile.onstove.com/ru/237901057/</sys:String>
+    <sys:String x:Key="LOCStoveProfileUrlEmpty">URL профиля не может быть пустым.</sys:String>
+    <sys:String x:Key="LOCStoveProfileUrlInvalid">URL профиля должен быть в формате: https://profile.onstove.com/[язык]/[id-пользователя]/</sys:String>
     <sys:String x:Key="LOCStoveImportMetadata">Импортировать метаданные</sys:String>
     <sys:String x:Key="LOCStoveImportTags">Импортировать теги</sys:String>
     <sys:String x:Key="LOCStoveAllowAdult">Разрешить игры STOVE 18+</sys:String>

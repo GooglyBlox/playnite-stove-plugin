@@ -10,6 +10,9 @@
     
     <!-- StoveLibrarySettingsView -->
     <sys:String x:Key="LOCStoveProfileUrl">Profil-URL:</sys:String>
+    <sys:String x:Key="LOCStoveProfileUrlPlaceholder">https://profile.onstove.com/de/237901057/</sys:String>
+    <sys:String x:Key="LOCStoveProfileUrlEmpty">Profil-URL darf nicht leer sein.</sys:String>
+    <sys:String x:Key="LOCStoveProfileUrlInvalid">Profil-URL muss im Format sein: https://profile.onstove.com/[sprache]/[benutzer-id]/</sys:String>
     <sys:String x:Key="LOCStoveImportMetadata">Metadaten importieren</sys:String>
     <sys:String x:Key="LOCStoveImportTags">Tags importieren</sys:String>
     <sys:String x:Key="LOCStoveAllowAdult">18+ STOVE-Titel erlauben</sys:String>
