@@ -239,7 +239,7 @@ namespace StoveLibrary.Services
                     GameId = gameId,
                     Links = new List<Link> { new Link("Store Page", url) },
                     Platforms = new HashSet<MetadataProperty>
-                                { new MetadataSpecProperty("pc_windows") }
+                        { new MetadataSpecProperty("pc_windows") }
                 };
 
                 /* name */
@@ -277,7 +277,7 @@ namespace StoveLibrary.Services
                         switch (label)
                         {
                             case "genre":
-                                meta.Genres = NameSet(value);
+                                meta.Genres = ParseMultipleAnchors(value);
                                 break;
                             case "creator":
                                 meta.Developers = NameSet(value);
@@ -354,6 +354,45 @@ namespace StoveLibrary.Services
             {
                 logger.Error(ex, $"[STOVE] Critical error parsing game page for {gameId}");
                 return null;
+            }
+        }
+
+        private static HashSet<MetadataProperty> ParseMultipleAnchors(string htmlContent)
+        {
+            if (string.IsNullOrWhiteSpace(htmlContent))
+                return new HashSet<MetadataProperty>();
+
+            try
+            {
+                var parser = new HtmlParser();
+                var doc = parser.Parse("<div>" + htmlContent + "</div>");
+
+                var anchors = doc?.QuerySelectorAll("a");
+                if (anchors == null || !anchors.Any())
+                    return new HashSet<MetadataProperty>();
+
+                var values = new HashSet<MetadataProperty>();
+
+                foreach (var anchor in anchors)
+                {
+                    var text = anchor?.TextContent?.Trim();
+                    if (string.IsNullOrEmpty(text))
+                        continue;
+
+                    // Remove trailing comma if present
+                    if (text.EndsWith(","))
+                        text = text.Substring(0, text.Length - 1).Trim();
+
+                    if (!string.IsNullOrEmpty(text))
+                        values.Add(new MetadataNameProperty(text));
+                }
+
+                return values;
+            }
+            catch (Exception ex)
+            {
+                LogManager.GetLogger().Debug($"[STOVE] Error parsing multiple anchors: {ex.Message}");
+                return new HashSet<MetadataProperty>();
             }
         }
 
