@@ -102,6 +102,61 @@ namespace StoveLibrary.Services
             }
         }
 
+        public string GetGameDeveloper(string gameId)
+        {
+            if (string.IsNullOrEmpty(gameId))
+            {
+                return null;
+            }
+
+            try
+            {
+                using (var client = new HttpClient())
+                {
+                    client.DefaultRequestHeaders.Add("X-Lang", "en");
+                    client.DefaultRequestHeaders.Add("X-Nation", "US");
+                    client.DefaultRequestHeaders.Add("X-Device-Type", "P01");
+                    client.DefaultRequestHeaders.Add("X-Timezone", "America/Los_Angeles");
+                    client.DefaultRequestHeaders.Add("X-Utc-Offset", "-420");
+                    client.DefaultRequestHeaders.Add("Origin", "https://store.onstove.com");
+                    client.DefaultRequestHeaders.Add("Referer", "https://store.onstove.com/");
+                    client.DefaultRequestHeaders.Add("User-Agent",
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.205 Safari/537.36");
+
+                    client.DefaultRequestHeaders.Accept.Clear();
+                    client.DefaultRequestHeaders.Accept.Add(
+                        new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
+                    var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    var gameDetailsUrl = $"https://api.onstove.com/main-common/v1.0/client/exhibit-games/0?game_id={gameId}&timestemp={timestamp}";
+
+                    var response = client.GetAsync(gameDetailsUrl).Result;
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var content = response.Content.ReadAsStringAsync().Result;
+                        var gameData = JsonConvert.DeserializeObject<dynamic>(content);
+                        
+                        if (gameData?.result == "000" && gameData.value?.developer != null)
+                        {
+                            return gameData.value.developer.ToString();
+                        }
+                    }
+                    else
+                    {
+                        var errorContent = response.Content.ReadAsStringAsync().Result;
+                        logger.Warn($"Game details API request failed: {response.StatusCode} - {errorContent}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, $"Error getting developer for game ID: {gameId}");
+            }
+
+            return null;
+        }
+
         private string SelectProductDescription(IHtmlDocument doc)
         {
             if (doc == null)

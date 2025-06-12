@@ -58,7 +58,6 @@ namespace StoveLibrary.Services
 
                 var meta = new GameMetadata();
 
-                // Get description from scraping the store page
                 try
                 {
                     var description = StoveLibrary.StoveApi.GetGameDescription(gameUrl);
@@ -70,6 +69,29 @@ namespace StoveLibrary.Services
                 catch (Exception ex)
                 {
                     Logger.Error(ex, $"Failed to get description for game: {game.Name}");
+                }
+
+                try
+                {
+                    var developer = StoveLibrary.StoveApi.GetGameDeveloper(game.GameId);
+                    if (!string.IsNullOrEmpty(developer))
+                    {
+                        var developers = developer.Split(',')
+                            .Select(dev => dev.Trim())
+                            .Where(dev => !string.IsNullOrEmpty(dev))
+                            .ToList();
+
+                        if (developers.Any())
+                        {
+                            meta.Developers = new HashSet<MetadataProperty>(
+                                developers.Select(dev => new MetadataNameProperty(dev))
+                            );
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, $"Failed to get developer information for game: {game.Name}");
                 }
 
                 if (storeDetails.Genres != null && storeDetails.Genres.Any())
