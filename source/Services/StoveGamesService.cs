@@ -34,6 +34,11 @@ namespace StoveLibrary.Services
                         break;
                     }
                 }
+                catch (HttpRequestException ex) when (ex.Message.Contains("401") || ex.Message.Contains("Unauthorized"))
+                {
+                    logger.Error(ex, "Authentication failed - stored member_no may be invalid");
+                    throw new UnauthorizedAccessException("Auth token expired or invalid", ex);
+                }
                 catch (Exception ex)
                 {
                     logger.Error(ex, $"Error fetching games page {page}");
@@ -75,6 +80,12 @@ namespace StoveLibrary.Services
                     else
                     {
                         var errorContent = response.Content.ReadAsStringAsync().Result;
+                        
+                        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                        {
+                            throw new HttpRequestException($"401 Unauthorized: {errorContent}");
+                        }
+                        
                         logger.Error($"API request failed: {response.StatusCode} - {errorContent}");
                         return null;
                     }
@@ -83,7 +94,7 @@ namespace StoveLibrary.Services
             catch (Exception ex)
             {
                 logger.Error(ex, $"Error getting games page {page}");
-                return null;
+                throw;
             }
         }
     }

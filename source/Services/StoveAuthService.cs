@@ -12,16 +12,23 @@ namespace StoveLibrary.Services
     {
         private readonly ILogger logger = LogManager.GetLogger();
         private readonly IPlayniteAPI api;
+        private readonly StoveLibrarySettings settings;
 
-        public StoveAuthService(IPlayniteAPI playniteApi)
+        public StoveAuthService(IPlayniteAPI playniteApi, StoveLibrarySettings pluginSettings)
         {
             api = playniteApi ?? throw new ArgumentNullException(nameof(playniteApi));
+            settings = pluginSettings ?? throw new ArgumentNullException(nameof(pluginSettings));
         }
 
         public bool GetIsUserLoggedIn()
         {
             try
             {
+                if (settings.StoredMemberNo.HasValue)
+                {
+                    return GetSuatToken() != null;
+                }
+
                 var sessionData = GetSessionData();
                 return sessionData?.Value?.Member?.MemberNo != null;
             }
@@ -29,6 +36,44 @@ namespace StoveLibrary.Services
             {
                 logger.Error(ex, "Error checking login status");
                 return false;
+            }
+        }
+
+        public string GetSuatToken()
+        {
+            IWebView webView = null;
+            try
+            {
+                webView = api.WebViews.CreateOffscreenView();
+                if (webView == null)
+                {
+                    logger.Error("Failed to create WebView for token check");
+                    return null;
+                }
+
+                webView.Navigate("https://www.onstove.com/");
+                Thread.Sleep(1000);
+
+                var cookies = webView.GetCookies();
+                var suatCookie = cookies.FirstOrDefault(c => c.Name == "SUAT");
+                
+                return suatCookie?.Value;
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, "Error getting SUAT token");
+                return null;
+            }
+            finally
+            {
+                try
+                {
+                    webView?.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    logger.Error(ex, "Error disposing WebView");
+                }
             }
         }
 
@@ -56,6 +101,8 @@ namespace StoveLibrary.Services
                         {
                             logger.Info("Login successful");
                             loginCompleted = true;
+
+                            settings.StoredMemberNo = null;
 
                             await Task.Delay(2000);
                             webView.Close();
@@ -120,6 +167,8 @@ namespace StoveLibrary.Services
                     logger.Error(ex, "Error deleting specific cookies");
                 }
 
+                settings.StoredMemberNo = null;
+
                 logger.Info("Logout completed");
             }
             catch (Exception ex)
@@ -156,6 +205,30 @@ namespace StoveLibrary.Services
 
                 var cookies = webView.GetCookies();
 
+                var suatCookie = cookies.FirstOrDefault(c => c.Name == "SUAT");
+                if (suatCookie == null || string.IsNullOrEmpty(suatCookie.Value))
+                {
+                    logger.Error("SUAT cookie not found");
+                    return null;
+                }
+
+                if (settings.StoredMemberNo.HasValue)
+                {
+                    return new SessionResponse
+                    {
+                        Value = new SessionValue
+                        {
+                            AccessToken = suatCookie.Value,
+                            Member = new Member
+                            {
+                                MemberNo = settings.StoredMemberNo.Value
+                            }
+                        },
+                        Message = "OK",
+                        Result = "000"
+                    };
+                }
+
                 var sumtCookie = cookies.FirstOrDefault(c => c.Name == "SUMT_INFO");
                 if (sumtCookie != null && !string.IsNullOrEmpty(sumtCookie.Value))
                 {
@@ -167,30 +240,24 @@ namespace StoveLibrary.Services
                         var memberInfo = JsonConvert.DeserializeObject<dynamic>(decodedTwice);
                         var memberNo = (long)memberInfo.member_no;
 
-                        var suatCookie = cookies.FirstOrDefault(c => c.Name == "SUAT");
-                        if (suatCookie != null && !string.IsNullOrEmpty(suatCookie.Value))
+                        settings.StoredMemberNo = memberNo;
+
+                        return new SessionResponse
                         {
-                            return new SessionResponse
+                            Value = new SessionValue
                             {
-                                Value = new SessionValue
+                                AccessToken = suatCookie.Value,
+                                Member = new Member
                                 {
-                                    AccessToken = suatCookie.Value,
-                                    Member = new Member
-                                    {
-                                        MemberNo = memberNo,
-                                        UserId = memberInfo.user_id?.ToString(),
-                                        Nickname = memberInfo.nickname?.ToString(),
-                                        ProfileImg = memberInfo.profile_img?.ToString()
-                                    }
-                                },
-                                Message = "OK",
-                                Result = "000"
-                            };
-                        }
-                        else
-                        {
-                            logger.Error("SUAT cookie not found");
-                        }
+                                    MemberNo = memberNo,
+                                    UserId = memberInfo.user_id?.ToString(),
+                                    Nickname = memberInfo.nickname?.ToString(),
+                                    ProfileImg = memberInfo.profile_img?.ToString()
+                                }
+                            },
+                            Message = "OK",
+                            Result = "000"
+                        };
                     }
                     catch (Exception ex)
                     {
@@ -199,10 +266,9 @@ namespace StoveLibrary.Services
                 }
                 else
                 {
-                    logger.Error("SUMT_INFO cookie not found");
+                    logger.Error("SUMT_INFO cookie not found and no stored member_no");
                 }
 
-                logger.Error("Could not extract session data from cookies");
                 return null;
             }
             catch (Exception ex)

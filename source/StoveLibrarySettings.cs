@@ -47,6 +47,13 @@ namespace StoveLibrary
             get => allowAdultGames;
             set => SetValue(ref allowAdultGames, value);
         }
+
+        private long? storedMemberNo = null;
+        public long? StoredMemberNo
+        {
+            get => storedMemberNo;
+            set => SetValue(ref storedMemberNo, value);
+        }
     }
 
     public class StoveLibrarySettingsViewModel : ObservableObject, ISettings

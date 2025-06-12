@@ -21,7 +21,7 @@ namespace StoveLibrary.Services
             api = playniteApi ?? throw new ArgumentNullException(nameof(playniteApi));
             settings = pluginSettings ?? throw new ArgumentNullException(nameof(pluginSettings));
             
-            authService = new StoveAuthService(api);
+            authService = new StoveAuthService(api, settings);
             gamesService = new StoveGamesService();
             storeService = new StoveStoreService(api, settings);
         }
@@ -97,6 +97,12 @@ namespace StoveLibrary.Services
                         logger.Error(ex, $"Failed to process game: {game.GameId}");
                     }
                 }
+            }
+            catch (UnauthorizedAccessException)
+            {
+                logger.Error("Authentication failed - clearing stored member_no");
+                settings.StoredMemberNo = null;
+                throw;
             }
             catch (Exception ex)
             {
