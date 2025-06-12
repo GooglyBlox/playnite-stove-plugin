@@ -9,10 +9,13 @@
     <sys:String x:Key="LOCStoveImportError">STOVE kütüphanesi içe aktarılırken hata oluştu!</sys:String>
     
     <!-- StoveLibrarySettingsView -->
-    <sys:String x:Key="LOCStoveProfileUrl">Profil URL'si:</sys:String>
-    <sys:String x:Key="LOCStoveProfileUrlPlaceholder">https://profile.onstove.com/tr/237901057/</sys:String>
-    <sys:String x:Key="LOCStoveProfileUrlEmpty">Profil URL'si boş olamaz.</sys:String>
-    <sys:String x:Key="LOCStoveProfileUrlInvalid">Profil URL'si şu formatta olmalıdır: https://profile.onstove.com/[dil]/[kullanici-id]/</sys:String>
+    <sys:String x:Key="LOCStoveSettingsConnectAccount">Hesabı bağla</sys:String>
+    <sys:String x:Key="LOCStoveSettingsImportInstalledLabel">Yüklü oyunları içe aktar</sys:String>
+    <sys:String x:Key="LOCStoveSettingsImportUninstalledLabel">Yüklü olmayan oyunları içe aktar</sys:String>
+    <sys:String x:Key="LOCStoveAuthenticateLabel">Kimliği Doğrula</sys:String>
+    <sys:String x:Key="LOCStoveLoginChecking">Kimlik doğrulama durumu kontrol ediliyor…</sys:String>
+    <sys:String x:Key="LOCStoveLoggedIn">Kullanıcı kimliği doğrulandı</sys:String>
+    <sys:String x:Key="LOCStoveNotLoggedIn">Kimlik doğrulama gerekli</sys:String>
     <sys:String x:Key="LOCStoveImportMetadata">Meta verileri içe aktar</sys:String>
     <sys:String x:Key="LOCStoveImportTags">Etiketleri içe aktar</sys:String>
     <sys:String x:Key="LOCStoveAllowAdult">18+ STOVE başlıklarına izin ver</sys:String>
@@ -22,5 +25,5 @@
     <sys:String x:Key="LOCStoveClientNotFound">STOVE istemcisi bulunamadı!</sys:String>
     
     <!-- StoveLibraryExeSelection -->
-    <sys:String x:Key="LOCStoveLibraryExeSelectionTitle">Oynama eylemi için çalıştırılabilir dosyayı seçin</sys:String>
+    <sys:String x:Key="LOCStoveLibraryExeSelectionTitle">Oynatma eylemi için çalıştırılabilir dosyayı seçin</sys:String>
 </ResourceDictionary>

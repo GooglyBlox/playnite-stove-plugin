@@ -3,56 +3,86 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
              mc:Ignorable="d"
-             d:DesignHeight="300"
+             d:DesignHeight="400"
              d:DesignWidth="600">
 
-    <Grid Margin="20">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/> 
-            <RowDefinition Height="20"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="10"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="10"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+    <UserControl.Resources>
+        <sys:Boolean x:Key="True">True</sys:Boolean>
+        <sys:Boolean x:Key="False">False</sys:Boolean>
+    </UserControl.Resources>
 
-        <StackPanel Orientation="Horizontal" Grid.Row="0">
-            <Label Content="{DynamicResource LOCStoveProfileUrl}" VerticalAlignment="Center"/>
-            <Grid Width="420" Margin="10,0,0,0">
-                <TextBox x:Name="ProfileUrlTextBox"
-                         Text="{Binding Settings.ProfileUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-                <TextBlock Text="{DynamicResource LOCStoveProfileUrlPlaceholder}"
-                           Foreground="Gray"
-                           Margin="4,0,0,0"
-                           VerticalAlignment="Center"
-                           IsHitTestVisible="False">
+    <StackPanel Margin="20">
+        <CheckBox Name="CheckStoveConnectAccount"
+                  IsChecked="{Binding Settings.ConnectAccount}"
+                  Content="{DynamicResource LOCStoveSettingsConnectAccount}"/>
+
+        <StackPanel Margin="25,5,5,0"
+                    IsEnabled="{Binding IsChecked, ElementName=CheckStoveConnectAccount}">
+
+            <CheckBox Name="CheckStoveImportInstalled"
+                      IsChecked="{Binding Settings.ImportInstalledGames}"
+                      Margin="0,10,0,5"
+                      Content="{DynamicResource LOCStoveSettingsImportInstalledLabel}"/>
+
+            <CheckBox Name="CheckStoveImportUninstalled"
+                      IsChecked="{Binding Settings.ImportUninstalledGames}"
+                      Margin="0,10,0,0"
+                      Content="{DynamicResource LOCStoveSettingsImportUninstalledLabel}"/>
+
+            <StackPanel Orientation="Horizontal"
+                        Margin="0,15,5,0"
+                    HorizontalAlignment="Left">
+                <Button Content="{DynamicResource LOCStoveAuthenticateLabel}"
+                        HorizontalAlignment="Left"
+                        Command="{Binding LoginCommand}"/>
+                <TextBlock VerticalAlignment="Center"
+                        Margin="10,5,5,5">
+                    <TextBlock.Tag>
+                        <PriorityBinding>
+                            <Binding Path="IsUserLoggedIn"
+                                    IsAsync="True"/>
+                            <Binding Source="{x:Null}"/>
+                        </PriorityBinding>
+                    </TextBlock.Tag>
                     <TextBlock.Style>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style TargetType="TextBlock"
+                                BasedOn="{StaticResource BaseTextBlockStyle}">
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding ElementName=ProfileUrlTextBox, Path=Text}" Value="">
-                                    <Setter Property="Visibility" Value="Visible"/>
-                                </DataTrigger>
+                                <Trigger Property="Tag"
+                                        Value="{StaticResource True}">
+                                    <Setter Property="Text"
+                                            Value="{DynamicResource LOCStoveLoggedIn}"/>
+                                </Trigger>
+                                <Trigger Property="Tag"
+                                        Value="{StaticResource False}">
+                                    <Setter Property="Text"
+                                            Value="{DynamicResource LOCStoveNotLoggedIn}"/>
+                                </Trigger>
+                                <Trigger Property="Tag"
+                                        Value="{x:Null}">
+                                    <Setter Property="Text"
+                                            Value="{DynamicResource LOCStoveLoginChecking}"/>
+                                </Trigger>
                             </Style.Triggers>
                         </Style>
                     </TextBlock.Style>
                 </TextBlock>
-            </Grid>
+            </StackPanel>
+
+            <CheckBox Margin="0,20,0,5"
+                      Content="{DynamicResource LOCStoveImportMetadata}"
+                      IsChecked="{Binding Settings.ImportMetadata, Mode=TwoWay}"/>
+
+            <CheckBox Margin="0,5,0,5"
+                      Content="{DynamicResource LOCStoveImportTags}"
+                      IsChecked="{Binding Settings.ImportTags, Mode=TwoWay}"/>
+
+            <CheckBox Margin="0,5,0,0"
+                      Content="{DynamicResource LOCStoveAllowAdult}"
+                      IsChecked="{Binding Settings.AllowAdultGames, Mode=TwoWay}"
+                      ToolTip="{DynamicResource LOCStoveAllowAdultTooltip}"/>
         </StackPanel>
-
-        <CheckBox Grid.Row="2"
-                  Content="{DynamicResource LOCStoveImportMetadata}"
-                  IsChecked="{Binding Settings.ImportMetadata, Mode=TwoWay}"/>
-
-        <CheckBox Grid.Row="4"
-                  Content="{DynamicResource LOCStoveImportTags}"
-                  IsChecked="{Binding Settings.ImportTags, Mode=TwoWay}"/>
-
-        <CheckBox Grid.Row="6"
-                  Content="{DynamicResource LOCStoveAllowAdult}"
-                  IsChecked="{Binding Settings.AllowAdultGames, Mode=TwoWay}"
-                  ToolTip="{DynamicResource LOCStoveAllowAdultTooltip}"/>
-    </Grid>
+    </StackPanel>
 </UserControl>

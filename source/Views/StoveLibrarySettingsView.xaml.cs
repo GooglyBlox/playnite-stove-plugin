@@ -36,7 +36,7 @@ namespace StoveLibrary.Views
             }
             catch (Exception ex)
             {
-                LogManager.GetLogger().Error(ex, "[STOVE] Error initializing settings view");
+                LogManager.GetLogger().Error(ex, "Error initializing settings view");
                 // Create minimal fallback
                 ViewModel = null;
                 DataContext = settings;

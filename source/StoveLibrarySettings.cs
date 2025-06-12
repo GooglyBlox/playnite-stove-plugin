@@ -1,17 +1,30 @@
 ﻿using Playnite.SDK;
 using Playnite.SDK.Data;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 
 namespace StoveLibrary
 {
     public class StoveLibrarySettings : ObservableObject
     {
-        private string profileUrl = string.Empty;
-        public string ProfileUrl
+        private bool connectAccount = false;
+        public bool ConnectAccount
         {
-            get => profileUrl;
-            set => SetValue(ref profileUrl, value);
+            get => connectAccount;
+            set => SetValue(ref connectAccount, value);
+        }
+
+        private bool importInstalledGames = true;
+        public bool ImportInstalledGames
+        {
+            get => importInstalledGames;
+            set => SetValue(ref importInstalledGames, value);
+        }
+
+        private bool importUninstalledGames = false;
+        public bool ImportUninstalledGames
+        {
+            get => importUninstalledGames;
+            set => SetValue(ref importUninstalledGames, value);
         }
 
         private bool importMetadata = true;
@@ -38,10 +51,6 @@ namespace StoveLibrary
 
     public class StoveLibrarySettingsViewModel : ObservableObject, ISettings
     {
-        private static readonly Regex ProfileUrlRegex = new Regex(
-            @"^https://profile\.onstove\.com/[a-zA-Z0-9_-]+/\d+(/.*)?$",
-            RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
         private StoveLibrary Plugin { get; }
         private StoveLibrarySettings EditingClone { get; set; }
 
@@ -52,10 +61,53 @@ namespace StoveLibrary
             set => SetValue(ref settings, value);
         }
 
+        public bool IsUserLoggedIn
+        {
+            get
+            {
+                try
+                {
+                    return StoveLibrary.StoveApi?.GetIsUserLoggedIn() ?? false;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
+
+        public RelayCommand LoginCommand { get; }
+
         public StoveLibrarySettingsViewModel(StoveLibrary plugin)
         {
             Plugin = plugin;
-            Settings = plugin.LoadPluginSettings<StoveLibrarySettings>() ?? new StoveLibrarySettings();
+            var savedSettings = plugin.LoadPluginSettings<StoveLibrarySettings>();
+            if (savedSettings != null)
+            {
+                Settings = savedSettings;
+            }
+            else
+            {
+                Settings = new StoveLibrarySettings();
+            }
+
+            LoginCommand = new RelayCommand(() =>
+            {
+                Login();
+            });
+        }
+
+        private void Login()
+        {
+            try
+            {
+                StoveLibrary.StoveApi?.Login();
+                OnPropertyChanged(nameof(IsUserLoggedIn));
+            }
+            catch (System.Exception ex)
+            {
+                LogManager.GetLogger().Error(ex, "Failed to authenticate user.");
+            }
         }
 
         public void BeginEdit()
@@ -77,17 +129,7 @@ namespace StoveLibrary
         public bool VerifySettings(out List<string> errors)
         {
             errors = new List<string>();
-
-            if (string.IsNullOrWhiteSpace(Settings.ProfileUrl))
-            {
-                errors.Add(Plugin.PlayniteApi.Resources.GetString("LOCStoveProfileUrlEmpty"));
-            }
-            else if (!ProfileUrlRegex.IsMatch(Settings.ProfileUrl.Trim()))
-            {
-                errors.Add(Plugin.PlayniteApi.Resources.GetString("LOCStoveProfileUrlInvalid"));
-            }
-
-            return errors.Count == 0;
+            return true;
         }
     }
 }

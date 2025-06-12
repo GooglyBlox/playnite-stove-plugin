@@ -9,10 +9,13 @@
     <sys:String x:Key="LOCStoveImportError">Erreur lors de l'importation de la bibliothèque STOVE !</sys:String>
     
     <!-- StoveLibrarySettingsView -->
-    <sys:String x:Key="LOCStoveProfileUrl">URL du profil :</sys:String>
-    <sys:String x:Key="LOCStoveProfileUrlPlaceholder">https://profile.onstove.com/fr/237901057/</sys:String>
-    <sys:String x:Key="LOCStoveProfileUrlEmpty">L'URL du profil ne peut pas être vide.</sys:String>
-    <sys:String x:Key="LOCStoveProfileUrlInvalid">L'URL du profil doit être au format : https://profile.onstove.com/[langue]/[id-utilisateur]/</sys:String>
+    <sys:String x:Key="LOCStoveSettingsConnectAccount">Connecter le compte</sys:String>
+    <sys:String x:Key="LOCStoveSettingsImportInstalledLabel">Importer les jeux installés</sys:String>
+    <sys:String x:Key="LOCStoveSettingsImportUninstalledLabel">Importer les jeux non installés</sys:String>
+    <sys:String x:Key="LOCStoveAuthenticateLabel">S'authentifier</sys:String>
+    <sys:String x:Key="LOCStoveLoginChecking">Vérification du statut d'authentification…</sys:String>
+    <sys:String x:Key="LOCStoveLoggedIn">L'utilisateur est authentifié</sys:String>
+    <sys:String x:Key="LOCStoveNotLoggedIn">Authentification requise</sys:String>
     <sys:String x:Key="LOCStoveImportMetadata">Importer les métadonnées</sys:String>
     <sys:String x:Key="LOCStoveImportTags">Importer les tags</sys:String>
     <sys:String x:Key="LOCStoveAllowAdult">Autoriser les titres STOVE 18+</sys:String>
@@ -22,5 +25,5 @@
     <sys:String x:Key="LOCStoveClientNotFound">Client STOVE non trouvé !</sys:String>
     
     <!-- StoveLibraryExeSelection -->
-    <sys:String x:Key="LOCStoveLibraryExeSelectionTitle">Sélectionnez l'exécutable pour l'action de lecture</sys:String>
+    <sys:String x:Key="LOCStoveLibraryExeSelectionTitle">Sélectionnez l'exécutable pour l'action de jeu</sys:String>
 </ResourceDictionary>

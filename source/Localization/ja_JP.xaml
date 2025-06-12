@@ -9,10 +9,13 @@
     <sys:String x:Key="LOCStoveImportError">STOVE ライブラリのインポートエラー！</sys:String>
     
     <!-- StoveLibrarySettingsView -->
-    <sys:String x:Key="LOCStoveProfileUrl">プロフィール URL：</sys:String>
-    <sys:String x:Key="LOCStoveProfileUrlPlaceholder">https://profile.onstove.com/ja/237901057/</sys:String>
-    <sys:String x:Key="LOCStoveProfileUrlEmpty">プロフィール URL は空にできません。</sys:String>
-    <sys:String x:Key="LOCStoveProfileUrlInvalid">プロフィール URL は次の形式である必要があります：https://profile.onstove.com/[言語]/[ユーザーID]/</sys:String>
+    <sys:String x:Key="LOCStoveSettingsConnectAccount">アカウントを接続</sys:String>
+    <sys:String x:Key="LOCStoveSettingsImportInstalledLabel">インストール済みのゲームをインポート</sys:String>
+    <sys:String x:Key="LOCStoveSettingsImportUninstalledLabel">未インストールのゲームをインポート</sys:String>
+    <sys:String x:Key="LOCStoveAuthenticateLabel">認証</sys:String>
+    <sys:String x:Key="LOCStoveLoginChecking">認証ステータスを確認中…</sys:String>
+    <sys:String x:Key="LOCStoveLoggedIn">ユーザーは認証済みです</sys:String>
+    <sys:String x:Key="LOCStoveNotLoggedIn">認証が必要です</sys:String>
     <sys:String x:Key="LOCStoveImportMetadata">メタデータをインポート</sys:String>
     <sys:String x:Key="LOCStoveImportTags">タグをインポート</sys:String>
     <sys:String x:Key="LOCStoveAllowAdult">18+ STOVE タイトルを許可</sys:String>
@@ -22,5 +25,5 @@
     <sys:String x:Key="LOCStoveClientNotFound">STOVE クライアントが見つかりません！</sys:String>
     
     <!-- StoveLibraryExeSelection -->
-    <sys:String x:Key="LOCStoveLibraryExeSelectionTitle">レイアクション用の実行ファイルを選択</sys:String>
+    <sys:String x:Key="LOCStoveLibraryExeSelectionTitle">プレイアクション用の実行ファイルを選択</sys:String>
 </ResourceDictionary>
