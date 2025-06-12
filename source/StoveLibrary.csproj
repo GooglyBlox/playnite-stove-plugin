@@ -73,17 +73,21 @@
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Data" />
     <Reference Include="System.Net.Http" />
+    <Reference Include="System.Web" />
     <Reference Include="System.Xml" />
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Helpers\WebHelper.cs" />
+    <Compile Include="Models\StoveApiModels.cs" />
+    <Compile Include="Models\StoveGameData.cs" />
+    <Compile Include="Services\StoveAuthService.cs" />
+    <Compile Include="Services\StoveGamesService.cs" />
+    <Compile Include="Services\StoveStoreService.cs" />
     <Compile Include="StoveLibrary.cs" />
     <Compile Include="StoveLibrarySettings.cs" />
     <Compile Include="Services\StoveApi.cs" />
     <Compile Include="Services\StoveMetadataProvider.cs" />
     <Compile Include="Services\StoveClient.cs" />
-    <Compile Include="Models\StoveGameData.cs" />
     <Compile Include="Views\StoveLibrarySettingsView.xaml.cs">
       <DependentUpon>StoveLibrarySettingsView.xaml</DependentUpon>
     </Compile>

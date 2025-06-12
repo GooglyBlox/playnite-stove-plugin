@@ -27,7 +27,7 @@ namespace StoveLibrary.Services
                 }
                 catch (Exception ex)
                 {
-                    logger.Debug($"[STOVE] Error getting icon path: {ex.Message}");
+                    logger.Error(ex, "Error getting icon path");
                 }
                 return null;
             }
@@ -43,7 +43,7 @@ namespace StoveLibrary.Services
                 }
                 catch (Exception ex)
                 {
-                    logger.Debug($"[STOVE] Error checking if installed: {ex.Message}");
+                    logger.Error(ex, "Error checking if installed");
                     return false;
                 }
             }
@@ -57,7 +57,7 @@ namespace StoveLibrary.Services
             }
             catch (Exception ex)
             {
-                LogManager.GetLogger().Debug($"[STOVE] Error expanding environment variables: {ex.Message}");
+                LogManager.GetLogger().Error(ex, "Error expanding environment variables");
                 return StoveExecutablePath;
             }
         }
@@ -70,7 +70,7 @@ namespace StoveLibrary.Services
 
                 if (string.IsNullOrEmpty(stoveExePath) || !File.Exists(stoveExePath))
                 {
-                    logger.Warn($"[STOVE] Client executable not found at {stoveExePath}, opening web store instead");
+                    logger.Warn($"Client executable not found at {stoveExePath}, opening web store instead");
                     OpenWebStore();
                     return;
                 }
@@ -85,26 +85,22 @@ namespace StoveLibrary.Services
                     
                     using (var process = Process.Start(startInfo))
                     {
-                        if (process != null)
+                        if (process == null)
                         {
-                            logger.Info("[STOVE] Client launched successfully");
-                        }
-                        else
-                        {
-                            logger.Warn("[STOVE] Process.Start returned null, falling back to web store");
+                            logger.Warn("Process.Start returned null, falling back to web store");
                             OpenWebStore();
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    logger.Error(ex, $"[STOVE] Failed to launch client at {stoveExePath}");
+                    logger.Error(ex, $"Failed to launch client at {stoveExePath}");
                     OpenWebStore();
                 }
             }
             catch (Exception ex)
             {
-                logger.Error(ex, "[STOVE] Critical error in Open method");
+                logger.Error(ex, "Critical error in Open method");
                 OpenWebStore();
             }
         }
@@ -122,7 +118,7 @@ namespace StoveLibrary.Services
             }
             catch (Exception ex)
             {
-                logger.Error(ex, "[STOVE] Failed to open web store as fallback");
+                logger.Error(ex, "Failed to open web store as fallback");
             }
         }
 
@@ -138,13 +134,12 @@ namespace StoveLibrary.Services
                 }
                 catch (Exception ex)
                 {
-                    logger.Error(ex, "[STOVE] Error getting STOVE processes");
+                    logger.Error(ex, "Error getting STOVE processes");
                     return;
                 }
 
                 if (stoveProcesses == null || stoveProcesses.Length == 0)
                 {
-                    logger.Debug("[STOVE] No running STOVE processes found");
                     return;
                 }
 
@@ -165,24 +160,18 @@ namespace StoveLibrary.Services
                                     if (!process.HasExited)
                                     {
                                         process.Kill();
-                                        logger.Info("[STOVE] Client process forcefully terminated");
                                     }
-                                }
-                                else
-                                {
-                                    logger.Info("[STOVE] Client process closed gracefully");
                                 }
                             }
                             catch (InvalidOperationException)
                             {
                                 // Process may have already exited
-                                logger.Debug("[STOVE] Process already exited during shutdown");
                             }
                         }
                     }
                     catch (Exception ex)
                     {
-                        logger.Error(ex, $"[STOVE] Failed to close process {process.Id}");
+                        logger.Error(ex, $"Failed to close process {process.Id}");
                     }
                     finally
                     {
@@ -192,14 +181,14 @@ namespace StoveLibrary.Services
                         }
                         catch (Exception ex)
                         {
-                            logger.Debug($"[STOVE] Error disposing process: {ex.Message}");
+                            logger.Error(ex, "Error disposing process");
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                logger.Error(ex, "[STOVE] Error during client shutdown");
+                logger.Error(ex, "Error during client shutdown");
             }
         }
     }

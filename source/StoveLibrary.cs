@@ -35,34 +35,49 @@ namespace StoveLibrary
 
         public override IEnumerable<GameMetadata> GetGames(LibraryGetGamesArgs args)
         {
-            var profile = settingsVm.Settings.ProfileUrl?.Trim();
-            if (string.IsNullOrWhiteSpace(profile))
+            var allGames = new List<GameMetadata>();
+            Exception importError = null;
+
+            if (!settingsVm.Settings.ConnectAccount)
             {
-                PlayniteApi.Notifications.Add(new NotificationMessage(
-                    "stove-profile-missing",
-                    PlayniteApi.Resources.GetString("LOCStoveImportError"),
-                    NotificationType.Error,
-                    () => OpenSettingsView()));
-                yield break;
+                return allGames;
             }
 
-            List<GameMetadata> games;
             try
             {
-                games = StoveApi.GetOwnedGames(profile);
+                if (!StoveApi.GetIsUserLoggedIn())
+                {
+                    throw new Exception("User is not logged in.");
+                }
+
+                allGames = StoveApi.GetOwnedGames();
+
+                if (!settingsVm.Settings.ImportUninstalledGames)
+                {
+                    allGames.RemoveAll(a => !a.IsInstalled);
+                }
             }
             catch (Exception ex)
             {
-                logger.Error(ex, "[STOVE] Import failed.");
-                PlayniteApi.Notifications.Add(new NotificationMessage(
-                    "stove-import-error",
-                    $"STOVE import error: {ex.Message}",
-                    NotificationType.Error,
-                    () => OpenSettingsView()));
-                yield break;
+                logger.Error(ex, "Failed to import STOVE games.");
+                importError = ex;
             }
 
-            foreach (var g in games) yield return g;
+            if (importError != null)
+            {
+                PlayniteApi.Notifications.Add(new NotificationMessage(
+                    "stove-import-error",
+                    string.Format(PlayniteApi.Resources.GetString("LOCLibraryImportError"), Name) +
+                    System.Environment.NewLine + importError.Message,
+                    NotificationType.Error,
+                    () => OpenSettingsView()));
+            }
+            else
+            {
+                PlayniteApi.Notifications.Remove("stove-import-error");
+            }
+
+            return allGames;
         }
 
         public override LibraryMetadataProvider GetMetadataDownloader() =>
