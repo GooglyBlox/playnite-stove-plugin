@@ -1,5 +1,6 @@
 ﻿using Playnite.SDK;
 using Playnite.SDK.Data;
+using System;
 using System.Collections.Generic;
 
 namespace StoveLibrary
@@ -53,6 +54,20 @@ namespace StoveLibrary
         {
             get => storedMemberNo;
             set => SetValue(ref storedMemberNo, value);
+        }
+
+        private string storedSuatToken = null;
+        public string StoredSuatToken
+        {
+            get => storedSuatToken;
+            set => SetValue(ref storedSuatToken, value);
+        }
+
+        private DateTime? suatTokenExpiry = null;
+        public DateTime? SuatTokenExpiry
+        {
+            get => suatTokenExpiry;
+            set => SetValue(ref suatTokenExpiry, value);
         }
     }
 

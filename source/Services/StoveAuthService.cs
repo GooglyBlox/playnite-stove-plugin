@@ -24,13 +24,30 @@ namespace StoveLibrary.Services
         {
             try
             {
-                if (settings.StoredMemberNo.HasValue)
+                if (!settings.StoredMemberNo.HasValue)
                 {
-                    return GetSuatToken() != null;
+                    var sessionData = GetSessionData();
+                    return sessionData?.Value?.Member?.MemberNo != null;
                 }
 
-                var sessionData = GetSessionData();
-                return sessionData?.Value?.Member?.MemberNo != null;
+                if (!string.IsNullOrEmpty(settings.StoredSuatToken))
+                {
+                    if (settings.SuatTokenExpiry.HasValue &&
+                        DateTime.UtcNow < settings.SuatTokenExpiry.Value)
+                    {
+                        return true;
+                    }
+                }
+
+                var freshToken = GetSuatToken();
+                if (!string.IsNullOrEmpty(freshToken))
+                {
+                    settings.StoredSuatToken = freshToken;
+                    settings.SuatTokenExpiry = DateTime.UtcNow.AddMinutes(50);
+                    return true;
+                }
+
+                return false;
             }
             catch (Exception ex)
             {
@@ -56,7 +73,7 @@ namespace StoveLibrary.Services
 
                 var cookies = webView.GetCookies();
                 var suatCookie = cookies.FirstOrDefault(c => c.Name == "SUAT");
-                
+
                 return suatCookie?.Value;
             }
             catch (Exception ex)
@@ -103,6 +120,8 @@ namespace StoveLibrary.Services
                             loginCompleted = true;
 
                             settings.StoredMemberNo = null;
+                            settings.StoredSuatToken = null;
+                            settings.SuatTokenExpiry = null;
 
                             await Task.Delay(2000);
                             webView.Close();
@@ -168,6 +187,8 @@ namespace StoveLibrary.Services
                 }
 
                 settings.StoredMemberNo = null;
+                settings.StoredSuatToken = null;
+                settings.SuatTokenExpiry = null;
 
                 logger.Info("Logout completed");
             }
@@ -190,35 +211,18 @@ namespace StoveLibrary.Services
 
         public SessionResponse GetSessionData()
         {
-            IWebView webView = null;
             try
             {
-                webView = api.WebViews.CreateOffscreenView();
-                if (webView == null)
-                {
-                    logger.Error("Failed to create WebView for session data");
-                    return null;
-                }
-
-                webView.Navigate("https://www.onstove.com/");
-                Thread.Sleep(2000);
-
-                var cookies = webView.GetCookies();
-
-                var suatCookie = cookies.FirstOrDefault(c => c.Name == "SUAT");
-                if (suatCookie == null || string.IsNullOrEmpty(suatCookie.Value))
-                {
-                    logger.Error("SUAT cookie not found");
-                    return null;
-                }
-
-                if (settings.StoredMemberNo.HasValue)
+                if (settings.StoredMemberNo.HasValue &&
+                    !string.IsNullOrEmpty(settings.StoredSuatToken) &&
+                    settings.SuatTokenExpiry.HasValue &&
+                    DateTime.UtcNow < settings.SuatTokenExpiry.Value)
                 {
                     return new SessionResponse
                     {
                         Value = new SessionValue
                         {
-                            AccessToken = suatCookie.Value,
+                            AccessToken = settings.StoredSuatToken,
                             Member = new Member
                             {
                                 MemberNo = settings.StoredMemberNo.Value
@@ -229,19 +233,33 @@ namespace StoveLibrary.Services
                     };
                 }
 
-                var sumtCookie = cookies.FirstOrDefault(c => c.Name == "SUMT_INFO");
-                if (sumtCookie != null && !string.IsNullOrEmpty(sumtCookie.Value))
+                IWebView webView = null;
+                try
                 {
-                    try
+                    webView = api.WebViews.CreateOffscreenView();
+                    if (webView == null)
                     {
-                        var decodedOnce = System.Web.HttpUtility.UrlDecode(sumtCookie.Value);
-                        var decodedTwice = System.Web.HttpUtility.UrlDecode(decodedOnce);
+                        logger.Error("Failed to create WebView for session data");
+                        return null;
+                    }
 
-                        var memberInfo = JsonConvert.DeserializeObject<dynamic>(decodedTwice);
-                        var memberNo = (long)memberInfo.member_no;
+                    webView.Navigate("https://www.onstove.com/");
+                    Thread.Sleep(2000);
 
-                        settings.StoredMemberNo = memberNo;
+                    var cookies = webView.GetCookies();
 
+                    var suatCookie = cookies.FirstOrDefault(c => c.Name == "SUAT");
+                    if (suatCookie == null || string.IsNullOrEmpty(suatCookie.Value))
+                    {
+                        logger.Error("SUAT cookie not found");
+                        return null;
+                    }
+
+                    settings.StoredSuatToken = suatCookie.Value;
+                    settings.SuatTokenExpiry = DateTime.UtcNow.AddMinutes(50);
+
+                    if (settings.StoredMemberNo.HasValue)
+                    {
                         return new SessionResponse
                         {
                             Value = new SessionValue
@@ -249,43 +267,72 @@ namespace StoveLibrary.Services
                                 AccessToken = suatCookie.Value,
                                 Member = new Member
                                 {
-                                    MemberNo = memberNo,
-                                    UserId = memberInfo.user_id?.ToString(),
-                                    Nickname = memberInfo.nickname?.ToString(),
-                                    ProfileImg = memberInfo.profile_img?.ToString()
+                                    MemberNo = settings.StoredMemberNo.Value
                                 }
                             },
                             Message = "OK",
                             Result = "000"
                         };
                     }
+
+                    var sumtCookie = cookies.FirstOrDefault(c => c.Name == "SUMT_INFO");
+                    if (sumtCookie != null && !string.IsNullOrEmpty(sumtCookie.Value))
+                    {
+                        try
+                        {
+                            var decodedOnce = System.Web.HttpUtility.UrlDecode(sumtCookie.Value);
+                            var decodedTwice = System.Web.HttpUtility.UrlDecode(decodedOnce);
+
+                            var memberInfo = JsonConvert.DeserializeObject<dynamic>(decodedTwice);
+                            var memberNo = (long)memberInfo.member_no;
+
+                            settings.StoredMemberNo = memberNo;
+
+                            return new SessionResponse
+                            {
+                                Value = new SessionValue
+                                {
+                                    AccessToken = suatCookie.Value,
+                                    Member = new Member
+                                    {
+                                        MemberNo = memberNo,
+                                        UserId = memberInfo.user_id?.ToString(),
+                                        Nickname = memberInfo.nickname?.ToString(),
+                                        ProfileImg = memberInfo.profile_img?.ToString()
+                                    }
+                                },
+                                Message = "OK",
+                                Result = "000"
+                            };
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.Error(ex, "Error parsing SUMT_INFO cookie");
+                        }
+                    }
+                    else
+                    {
+                        logger.Error("SUMT_INFO cookie not found and no stored member_no");
+                    }
+
+                    return null;
+                }
+                finally
+                {
+                    try
+                    {
+                        webView?.Dispose();
+                    }
                     catch (Exception ex)
                     {
-                        logger.Error(ex, "Error parsing SUMT_INFO cookie");
+                        logger.Error(ex, "Error disposing WebView");
                     }
                 }
-                else
-                {
-                    logger.Error("SUMT_INFO cookie not found and no stored member_no");
-                }
-
-                return null;
             }
             catch (Exception ex)
             {
                 logger.Error(ex, "Error getting session data");
                 return null;
-            }
-            finally
-            {
-                try
-                {
-                    webView?.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    logger.Error(ex, "Error disposing WebView");
-                }
             }
         }
     }
