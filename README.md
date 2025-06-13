@@ -1,4 +1,4 @@
-# playnite-stove-plugin
+# playnite-[stove](https://www.onstove.com/)-plugin
 Extension for [Playnite](https://playnite.link).  
 
 ## Informations
