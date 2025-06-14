@@ -86,6 +86,29 @@ namespace StoveLibrary.Services
                     Logger.Error(ex, $"Failed to get developer information for game: {game.Name}");
                 }
 
+                try
+                {
+                    var publisher = StoveLibrary.StoveApi.GetGamePublisher(game.GameId);
+                    if (!string.IsNullOrEmpty(publisher))
+                    {
+                        var publishers = publisher.Split(',')
+                            .Select(pub => pub.Trim())
+                            .Where(pub => !string.IsNullOrEmpty(pub))
+                            .ToList();
+
+                        if (publishers.Any())
+                        {
+                            meta.Publishers = new HashSet<MetadataProperty>(
+                                publishers.Select(pub => new MetadataNameProperty(pub))
+                            );
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, $"Failed to get publisher information for game: {game.Name}");
+                }
+
                 if (storeDetails.Genres != null && storeDetails.Genres.Any())
                 {
                     meta.Genres = new HashSet<MetadataProperty>(

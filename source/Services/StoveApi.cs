@@ -139,6 +139,11 @@ namespace StoveLibrary.Services
             return storeService.GetGameDeveloper(gameId);
         }
 
+        public string GetGamePublisher(string gameId)
+        {
+            return storeService.GetGamePublisher(gameId);
+        }
+
         public bool GetIsUserLoggedIn()
         {
             return authService.GetIsUserLoggedIn();

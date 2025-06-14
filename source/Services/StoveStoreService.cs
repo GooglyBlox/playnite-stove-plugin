@@ -124,6 +124,44 @@ namespace StoveLibrary.Services
             return null;
         }
 
+        public string GetGamePublisher(string gameId)
+        {
+            if (string.IsNullOrEmpty(gameId))
+            {
+                return null;
+            }
+
+            try
+            {
+                var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                var gameMetaUrl = $"https://api.onstove.com/game/v2.2/meta/{gameId}?ts={timestamp}";
+
+                var response = httpService.GetAsync(gameMetaUrl).Result;
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = response.Content.ReadAsStringAsync().Result;
+                    var gameData = JsonConvert.DeserializeObject<dynamic>(content);
+                    
+                    if (gameData?.code == 0 && gameData.value?.distributor != null)
+                    {
+                        return gameData.value.distributor.ToString();
+                    }
+                }
+                else
+                {
+                    var errorContent = response.Content.ReadAsStringAsync().Result;
+                    logger.Warn($"Game meta API request failed: {response.StatusCode} - {errorContent}");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, $"Error getting publisher for game ID: {gameId}");
+            }
+
+            return null;
+        }
+
         private string SelectProductDescription(IHtmlDocument doc)
         {
             if (doc == null)
