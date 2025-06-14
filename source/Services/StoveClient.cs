@@ -1,5 +1,6 @@
 using Playnite.SDK;
 using Playnite.SDK.Plugins;
+using Microsoft.Win32;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -11,7 +12,7 @@ namespace StoveLibrary.Services
     public class StoveClient : LibraryClient
     {
         private static readonly ILogger logger = LogManager.GetLogger();
-        private const string StoveExecutablePath = @"%programdata%\Smilegate\STOVE\STOVE.exe";
+        private const string StoveLauncherRegistryPath = @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\StoveLauncher";
 
         public override string Icon
         {
@@ -39,7 +40,8 @@ namespace StoveLibrary.Services
             {
                 try
                 {
-                    return File.Exists(GetStoveExecutablePath());
+                    var executablePath = GetStoveExecutablePath();
+                    return !string.IsNullOrEmpty(executablePath) && File.Exists(executablePath);
                 }
                 catch (Exception ex)
                 {
@@ -53,12 +55,38 @@ namespace StoveLibrary.Services
         {
             try
             {
-                return Environment.ExpandEnvironmentVariables(StoveExecutablePath);
+                using (var rootKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))
+                using (var uninstallKey = rootKey.OpenSubKey(StoveLauncherRegistryPath))
+                {
+                    if (uninstallKey == null)
+                    {
+                        LogManager.GetLogger().Debug("StoveLauncher registry key not found");
+                        return null;
+                    }
+
+                    var displayIcon = uninstallKey.GetValue("DisplayIcon")?.ToString();
+                    if (string.IsNullOrEmpty(displayIcon))
+                    {
+                        LogManager.GetLogger().Debug("DisplayIcon value not found in StoveLauncher registry");
+                        return null;
+                    }
+
+                    var executablePath = displayIcon;
+                    if (executablePath.Contains(","))
+                    {
+                        executablePath = executablePath.Split(',')[0];
+                    }
+
+                    executablePath = executablePath.Trim('"');
+
+                    LogManager.GetLogger().Debug($"Found STOVE executable path from registry: {executablePath}");
+                    return executablePath;
+                }
             }
             catch (Exception ex)
             {
-                LogManager.GetLogger().Error(ex, "Error expanding environment variables");
-                return StoveExecutablePath;
+                LogManager.GetLogger().Error(ex, "Error reading STOVE path from registry");
+                return null;
             }
         }
 
@@ -70,7 +98,7 @@ namespace StoveLibrary.Services
 
                 if (string.IsNullOrEmpty(stoveExePath) || !File.Exists(stoveExePath))
                 {
-                    logger.Warn($"Client executable not found at {stoveExePath}, opening web store instead");
+                    logger.Warn($"STOVE client not found or not installed, opening web store instead");
                     OpenWebStore();
                     return;
                 }
@@ -89,6 +117,10 @@ namespace StoveLibrary.Services
                         {
                             logger.Warn("Process.Start returned null, falling back to web store");
                             OpenWebStore();
+                        }
+                        else
+                        {
+                            logger.Info($"Successfully launched STOVE client: {stoveExePath}");
                         }
                     }
                 }
