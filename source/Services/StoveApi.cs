@@ -7,7 +7,7 @@ using System.Linq;
 
 namespace StoveLibrary.Services
 {
-    public class StoveApi
+    public class StoveApi : IDisposable
     {
         private readonly ILogger logger = LogManager.GetLogger();
         private readonly IPlayniteAPI api;
@@ -15,15 +15,17 @@ namespace StoveLibrary.Services
         private readonly StoveAuthService authService;
         private readonly StoveGamesService gamesService;
         private readonly StoveStoreService storeService;
+        private readonly StoveHttpService httpService;
 
         public StoveApi(IPlayniteAPI playniteApi, StoveLibrarySettings pluginSettings)
         {
             api = playniteApi ?? throw new ArgumentNullException(nameof(playniteApi));
             settings = pluginSettings ?? throw new ArgumentNullException(nameof(pluginSettings));
             
+            httpService = new StoveHttpService();
             authService = new StoveAuthService(api, settings);
-            gamesService = new StoveGamesService();
-            storeService = new StoveStoreService(api, settings);
+            gamesService = new StoveGamesService(httpService);
+            storeService = new StoveStoreService(api, settings, httpService);
         }
 
         public List<GameMetadata> GetOwnedGames()
@@ -32,7 +34,7 @@ namespace StoveLibrary.Services
 
             try
             {
-                var sessionData = authService.GetSessionData();
+                var sessionData = GetSessionData();
                 if (sessionData?.Value?.Member?.MemberNo == null)
                 {
                     logger.Error("Could not get member number from session");
@@ -47,7 +49,7 @@ namespace StoveLibrary.Services
 
                 var memberNo = sessionData.Value.Member.MemberNo;
                 var accessToken = sessionData.Value.AccessToken;
-                var games = gamesService.GetOwnedGamesFromApi(memberNo, accessToken);
+                var games = GetOwnedGamesFromApi(memberNo, accessToken);
                 logger.Info($"Found {games.Count} owned games.");
 
                 var existingGames = api.Database.Games.Where(g => g.PluginId == Guid.Parse("2a62a584-2cc3-4220-8da6-cf4ac588a439")).ToList();
@@ -70,8 +72,7 @@ namespace StoveLibrary.Services
                             GameId = game.GameId,
                             Name = game.ProductName,
                             Source = new MetadataNameProperty("STOVE"),
-                            Platforms = new HashSet<MetadataProperty> { new MetadataSpecProperty("pc_windows") },
-                            Links = new List<Link> { new Link("Store Page", $"https://store.onstove.com/en/games/{game.ProductNo}") }
+                            Platforms = new HashSet<MetadataProperty> { new MetadataSpecProperty("pc_windows") }
                         };
 
                         if (game.ReleaseCreatedAt > 0)
@@ -113,6 +114,16 @@ namespace StoveLibrary.Services
             return owned;
         }
 
+        public SessionResponse GetSessionData()
+        {
+            return authService.GetSessionData();
+        }
+
+        public List<StoveGameData> GetOwnedGamesFromApi(long memberNo, string accessToken)
+        {
+            return gamesService.GetOwnedGamesFromApi(memberNo, accessToken);
+        }
+
         public StoreGameDetails GetGameStoreDetails(int productNo)
         {
             return storeService.GetGameStoreDetails(productNo);
@@ -141,6 +152,11 @@ namespace StoveLibrary.Services
         public void Logout()
         {
             authService.Logout();
+        }
+
+        public void Dispose()
+        {
+            httpService?.Dispose();
         }
     }
 }

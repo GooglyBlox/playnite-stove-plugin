@@ -2,7 +2,6 @@ using Playnite.SDK;
 using StoveLibrary.Models;
 using System;
 using System.Collections.Generic;
-using System.Net.Http;
 using Newtonsoft.Json;
 
 namespace StoveLibrary.Services
@@ -10,6 +9,12 @@ namespace StoveLibrary.Services
     public class StoveGamesService
     {
         private readonly ILogger logger = LogManager.GetLogger();
+        private readonly StoveHttpService httpService;
+
+        public StoveGamesService(StoveHttpService httpService)
+        {
+            this.httpService = httpService ?? throw new ArgumentNullException(nameof(httpService));
+        }
 
         public List<StoveGameData> GetOwnedGamesFromApi(long memberNo, string authToken)
         {
@@ -34,7 +39,7 @@ namespace StoveLibrary.Services
                         break;
                     }
                 }
-                catch (HttpRequestException ex) when (ex.Message.Contains("401") || ex.Message.Contains("Unauthorized"))
+                catch (Exception ex) when (ex.Message.Contains("401") || ex.Message.Contains("Unauthorized"))
                 {
                     logger.Error(ex, "Authentication failed - stored member_no may be invalid");
                     throw new UnauthorizedAccessException("Auth token expired or invalid", ex);
@@ -53,42 +58,27 @@ namespace StoveLibrary.Services
         {
             try
             {
-                using (var client = new HttpClient())
+                var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                var gamesUrl = $"https://api.onstove.com/myindie/v1.1/own-games?member_no={memberNo}&product_type=GAME&size=30&page={page}&timestemp={timestamp}";
+
+                var response = httpService.GetAsync(gamesUrl, authToken).Result;
+
+                if (response.IsSuccessStatusCode)
                 {
-                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {authToken}");
-                    client.DefaultRequestHeaders.Add("X-Lang", "EN");
-                    client.DefaultRequestHeaders.Add("X-Nation", "US");
-                    client.DefaultRequestHeaders.Add("Origin", "https://profile.onstove.com");
-                    client.DefaultRequestHeaders.Add("Referer", "https://profile.onstove.com/");
-                    client.DefaultRequestHeaders.Add("User-Agent",
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.205 Safari/537.36");
+                    var content = response.Content.ReadAsStringAsync().Result;
+                    return JsonConvert.DeserializeObject<GamesResponse>(content);
+                }
+                else
+                {
+                    var errorContent = response.Content.ReadAsStringAsync().Result;
 
-                    client.DefaultRequestHeaders.Accept.Clear();
-                    client.DefaultRequestHeaders.Accept.Add(
-                        new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
-
-                    var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    var gamesUrl = $"https://api.onstove.com/myindie/v1.1/own-games?member_no={memberNo}&product_type=GAME&size=30&page={page}&timestemp={timestamp}";
-
-                    var response = client.GetAsync(gamesUrl).Result;
-
-                    if (response.IsSuccessStatusCode)
+                    if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                     {
-                        var content = response.Content.ReadAsStringAsync().Result;
-                        return JsonConvert.DeserializeObject<GamesResponse>(content);
+                        throw new Exception($"401 Unauthorized: {errorContent}");
                     }
-                    else
-                    {
-                        var errorContent = response.Content.ReadAsStringAsync().Result;
-                        
-                        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                        {
-                            throw new HttpRequestException($"401 Unauthorized: {errorContent}");
-                        }
-                        
-                        logger.Error($"API request failed: {response.StatusCode} - {errorContent}");
-                        return null;
-                    }
+
+                    logger.Error($"API request failed: {response.StatusCode} - {errorContent}");
+                    return null;
                 }
             }
             catch (Exception ex)

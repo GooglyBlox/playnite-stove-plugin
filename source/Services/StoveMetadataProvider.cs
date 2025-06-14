@@ -22,45 +22,37 @@ namespace StoveLibrary.Services
 
         public override GameMetadata GetMetadata(Game game)
         {
+            var meta = new GameMetadata();
+
             if (!Settings.ImportMetadata)
             {
-                return new GameMetadata();
+                return meta;
             }
 
             try
             {
-                string gameUrl = game.Links?.FirstOrDefault(x => x.Name == "Store Page")?.Url;
-                if (string.IsNullOrEmpty(gameUrl))
+                int productNo = GetProductNumberFromGame(game);
+                if (productNo <= 0)
                 {
-                    Logger.Warn($"No store URL found for game: {game.Name}");
-                    return new GameMetadata();
+                    Logger.Warn($"Could not determine product number for game: {game.Name}");
+                    return meta;
                 }
 
-                var urlParts = gameUrl.Split('/');
-                if (urlParts.Length < 2)
+                meta.Links = new List<Link>
                 {
-                    Logger.Error($"Invalid store URL format: {gameUrl}");
-                    return new GameMetadata();
-                }
-
-                if (!int.TryParse(urlParts.Last(), out int productNo))
-                {
-                    Logger.Error($"Could not extract product number from URL: {gameUrl}");
-                    return new GameMetadata();
-                }
+                    new Link("Store Page", $"https://store.onstove.com/en/games/{productNo}")
+                };
 
                 var storeDetails = StoveLibrary.StoveApi.GetGameStoreDetails(productNo);
                 if (storeDetails == null)
                 {
                     Logger.Warn($"No store details found for product {productNo}");
-                    return new GameMetadata();
+                    return meta;
                 }
-
-                var meta = new GameMetadata();
 
                 try
                 {
-                    var description = StoveLibrary.StoveApi.GetGameDescription(gameUrl);
+                    var description = StoveLibrary.StoveApi.GetGameDescription($"https://store.onstove.com/en/games/{productNo}");
                     if (!string.IsNullOrEmpty(description))
                     {
                         meta.Description = description;
@@ -123,8 +115,49 @@ namespace StoveLibrary.Services
             catch (Exception ex)
             {
                 Logger.Error(ex, $"Error getting metadata for game: {game.Name}");
-                return new GameMetadata();
+                return meta;
             }
+        }
+
+        private int GetProductNumberFromGame(Game game)
+        {
+            var storeLink = game.Links?.FirstOrDefault(x => x.Name == "Store Page");
+            if (storeLink != null && !string.IsNullOrEmpty(storeLink.Url))
+            {
+                var urlParts = storeLink.Url.Split('/');
+                if (urlParts.Length >= 2 && int.TryParse(urlParts.Last(), out int productNoFromLink))
+                {
+                    return productNoFromLink;
+                }
+            }
+
+            try
+            {
+                var sessionData = StoveLibrary.StoveApi.GetSessionData();
+                if (sessionData?.Value?.Member?.MemberNo != null && !string.IsNullOrEmpty(sessionData.Value.AccessToken))
+                {
+                    var memberNo = sessionData.Value.Member.MemberNo;
+                    var accessToken = sessionData.Value.AccessToken;
+                    var games = StoveLibrary.StoveApi.GetOwnedGamesFromApi(memberNo, accessToken);
+
+                    var gameData = games.FirstOrDefault(g => g.GameId == game.GameId);
+                    if (gameData != null)
+                    {
+                        return gameData.ProductNo;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to get product number from API");
+            }
+
+            if (int.TryParse(game.GameId, out int legacyProductNo))
+            {
+                return legacyProductNo;
+            }
+
+            return 0;
         }
 
         private string GetVerticalCoverUrl(string horizontalUrl)

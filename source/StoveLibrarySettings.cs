@@ -2,6 +2,8 @@
 using Playnite.SDK.Data;
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace StoveLibrary
 {
@@ -56,18 +58,91 @@ namespace StoveLibrary
             set => SetValue(ref storedMemberNo, value);
         }
 
-        private string storedSuatToken = null;
+        [DontSerialize]
         public string StoredSuatToken
         {
-            get => storedSuatToken;
-            set => SetValue(ref storedSuatToken, value);
+            get => GetDecryptedSuatToken();
+            set => SetEncryptedSuatToken(value);
         }
 
+        [DontSerialize]
         private DateTime? suatTokenExpiry = null;
+        [DontSerialize]
         public DateTime? SuatTokenExpiry
         {
             get => suatTokenExpiry;
             set => SetValue(ref suatTokenExpiry, value);
+        }
+
+        private string encryptedSuatToken = null;
+        public string EncryptedSuatToken
+        {
+            get => encryptedSuatToken;
+            set => SetValue(ref encryptedSuatToken, value);
+        }
+
+        private string GetDecryptedSuatToken()
+        {
+            if (string.IsNullOrEmpty(EncryptedSuatToken))
+            {
+                return null;
+            }
+
+            try
+            {
+                return DecryptString(EncryptedSuatToken);
+            }
+            catch (Exception ex)
+            {
+                LogManager.GetLogger().Error(ex, "Failed to decrypt SUAT token");
+                return null;
+            }
+        }
+
+        private void SetEncryptedSuatToken(string token)
+        {
+            if (string.IsNullOrEmpty(token))
+            {
+                EncryptedSuatToken = null;
+            }
+            else
+            {
+                try
+                {
+                    EncryptedSuatToken = EncryptString(token);
+                }
+                catch (Exception ex)
+                {
+                    LogManager.GetLogger().Error(ex, "Failed to encrypt SUAT token");
+                    EncryptedSuatToken = null;
+                }
+            }
+        }
+
+        private static string EncryptString(string input)
+        {
+            if (string.IsNullOrEmpty(input))
+            {
+                return input;
+            }
+
+            var entropy = Encoding.UTF8.GetBytes("StoveLibrary_2a62a584-2cc3-4220-8da6-cf4ac588a439");
+            var data = Encoding.UTF8.GetBytes(input);
+            var encrypted = ProtectedData.Protect(data, entropy, DataProtectionScope.CurrentUser);
+            return Convert.ToBase64String(encrypted);
+        }
+
+        private static string DecryptString(string input)
+        {
+            if (string.IsNullOrEmpty(input))
+            {
+                return input;
+            }
+
+            var entropy = Encoding.UTF8.GetBytes("StoveLibrary_2a62a584-2cc3-4220-8da6-cf4ac588a439");
+            var data = Convert.FromBase64String(input);
+            var decrypted = ProtectedData.Unprotect(data, entropy, DataProtectionScope.CurrentUser);
+            return Encoding.UTF8.GetString(decrypted);
         }
     }
 

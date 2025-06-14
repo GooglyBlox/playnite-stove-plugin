@@ -23,6 +23,7 @@ namespace StoveLibrary
         internal static StoveApi StoveApi { get; private set; }
 
         private readonly StoveLibrarySettingsViewModel settingsVm;
+        private bool disposed = false;
 
         public StoveLibrary(IPlayniteAPI api) : base(api)
         {
@@ -88,5 +89,35 @@ namespace StoveLibrary
             new StoveLibrarySettingsView(settingsVm.Settings);
 
         public override LibraryClient Client => new StoveClient();
+
+        public new void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        private void Dispose(bool disposing)
+        {
+            if (!disposed)
+            {
+                if (disposing)
+                {
+                    try
+                    {
+                        StoveApi?.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Error(ex, "Error disposing StoveApi");
+                    }
+                }
+                disposed = true;
+            }
+        }
+
+        ~StoveLibrary()
+        {
+            Dispose(false);
+        }
     }
 }
