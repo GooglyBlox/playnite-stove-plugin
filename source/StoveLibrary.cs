@@ -1,11 +1,14 @@
-﻿using StoveLibrary.Services;
+﻿using StoveLibrary.Controllers;
+using StoveLibrary.Services;
 using StoveLibrary.Views;
 using Playnite.SDK;
+using Playnite.SDK.Events;
 using Playnite.SDK.Models;
 using Playnite.SDK.Plugins;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Windows.Controls;
 
@@ -14,6 +17,7 @@ namespace StoveLibrary
     public class StoveLibrary : LibraryPlugin
     {
         private static readonly ILogger logger = LogManager.GetLogger();
+        private static Dictionary<Guid, StovePlayController> activeControllers = new Dictionary<Guid, StovePlayController>();
 
         public override Guid Id => Guid.Parse("2a62a584-2cc3-4220-8da6-cf4ac588a439");
         public override string Name => "STOVE";
@@ -23,15 +27,21 @@ namespace StoveLibrary
         internal static StoveApi StoveApi { get; private set; }
 
         private readonly StoveLibrarySettingsViewModel settingsVm;
+        private StoveGameMonitor gameMonitor;
         private bool disposed = false;
 
         public StoveLibrary(IPlayniteAPI api) : base(api)
         {
             Instance = this;
-            Properties = new LibraryPluginProperties { CanShutdownClient = false };
+            Properties = new LibraryPluginProperties { 
+                CanShutdownClient = false,
+                HasSettings = true 
+            };
             settingsVm = new StoveLibrarySettingsViewModel(this);
 
             StoveApi = new StoveApi(api, settingsVm.Settings);
+            
+            gameMonitor = new StoveGameMonitor(api, settingsVm.Settings);
         }
 
         public override IEnumerable<GameMetadata> GetGames(LibraryGetGamesArgs args)
@@ -52,6 +62,24 @@ namespace StoveLibrary
                 }
 
                 allGames = StoveApi.GetOwnedGames();
+
+                if (settingsVm.Settings.ImportInstalledGames)
+                {
+                    var installedGames = StoveRegistryHelper.GetInstalledStoveGames();
+                    
+                    foreach (var game in allGames)
+                    {
+                        var installInfo = installedGames.FirstOrDefault(ig => 
+                            string.Equals(ig.DisplayName, game.Name, StringComparison.OrdinalIgnoreCase));
+                        
+                        if (installInfo != null)
+                        {
+                            game.IsInstalled = true;
+                            game.InstallDirectory = installInfo.InstallDirectory;
+                            logger.Debug($"Game {game.Name} is installed at {installInfo.InstallDirectory}");
+                        }
+                    }
+                }
 
                 if (!settingsVm.Settings.ImportUninstalledGames)
                 {
@@ -81,6 +109,66 @@ namespace StoveLibrary
             return allGames;
         }
 
+        public override IEnumerable<InstallController> GetInstallActions(GetInstallActionsArgs args)
+        {
+            if (args.Game.PluginId != Id)
+            {
+                yield break;
+            }
+
+            yield return new StoveInstallController(args.Game, this);
+        }
+
+        public override IEnumerable<UninstallController> GetUninstallActions(GetUninstallActionsArgs args)
+        {
+            if (args.Game.PluginId != Id)
+            {
+                yield break;
+            }
+
+            yield return new StoveUninstallController(args.Game, this);
+        }
+
+        public override IEnumerable<PlayController> GetPlayActions(GetPlayActionsArgs args)
+        {
+            if (args.Game.PluginId != Id)
+            {
+                yield break;
+            }
+
+            var controller = new StovePlayController(args.Game, this);
+            activeControllers[args.Game.Id] = controller;
+            yield return controller;
+        }
+
+        public override void OnGameStopped(OnGameStoppedEventArgs args)
+        {
+            try
+            {
+                if (args.Game.PluginId == Id && args.ManuallyStopped)
+                {
+                    if (activeControllers.TryGetValue(args.Game.Id, out var controller))
+                    {
+                        controller.StopGame();
+                        activeControllers.Remove(args.Game.Id);
+                    }
+                }
+                else if (activeControllers.ContainsKey(args.Game.Id))
+                {
+                    activeControllers.Remove(args.Game.Id);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, "Error handling game stopped event");
+            }
+        }
+
+        public StoveGameInstallInfo GetGameInstallInfo(string gameName)
+        {
+            return StoveRegistryHelper.GetGameInstallInfo(gameName);
+        }
+
         public override LibraryMetadataProvider GetMetadataDownloader() =>
             new StoveMetadataProvider(this, settingsVm.Settings);
 
@@ -104,12 +192,34 @@ namespace StoveLibrary
                 {
                     try
                     {
+                        gameMonitor?.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Error(ex, "Error disposing game monitor");
+                    }
+
+                    try
+                    {
                         StoveApi?.Dispose();
                     }
                     catch (Exception ex)
                     {
                         logger.Error(ex, "Error disposing StoveApi");
                     }
+
+                    foreach (var controller in activeControllers.Values)
+                    {
+                        try
+                        {
+                            controller?.Dispose();
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.Error(ex, "Error disposing controller");
+                        }
+                    }
+                    activeControllers.Clear();
                 }
                 disposed = true;
             }
