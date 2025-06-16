@@ -43,7 +43,7 @@ namespace StoveLibrary.Services
                 if (!string.IsNullOrEmpty(freshToken))
                 {
                     settings.StoredSuatToken = freshToken;
-                    settings.SuatTokenExpiry = DateTime.UtcNow.AddMinutes(50);
+                    settings.SuatTokenExpiry = DateTime.UtcNow.AddYears(1);
                     return true;
                 }
 
@@ -256,7 +256,7 @@ namespace StoveLibrary.Services
                     }
 
                     settings.StoredSuatToken = suatCookie.Value;
-                    settings.SuatTokenExpiry = DateTime.UtcNow.AddMinutes(50);
+                    settings.SuatTokenExpiry = DateTime.UtcNow.AddYears(1);
 
                     if (settings.StoredMemberNo.HasValue)
                     {
@@ -334,6 +334,14 @@ namespace StoveLibrary.Services
                 logger.Error(ex, "Error getting session data");
                 return null;
             }
+        }
+
+        public void InvalidateTokens()
+        {
+            logger.Info("Invalidating stored tokens due to authentication failure");
+            settings.StoredSuatToken = null;
+            settings.SuatTokenExpiry = null;
+            settings.StoredMemberNo = null;
         }
     }
 }

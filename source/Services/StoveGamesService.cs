@@ -10,10 +10,12 @@ namespace StoveLibrary.Services
     {
         private readonly ILogger logger = LogManager.GetLogger();
         private readonly StoveHttpService httpService;
+        private readonly StoveAuthService authService;
 
-        public StoveGamesService(StoveHttpService httpService)
+        public StoveGamesService(StoveHttpService httpService, StoveAuthService authService = null)
         {
             this.httpService = httpService ?? throw new ArgumentNullException(nameof(httpService));
+            this.authService = authService;
         }
 
         public List<StoveGameData> GetOwnedGamesFromApi(long memberNo, string authToken)
@@ -41,7 +43,8 @@ namespace StoveLibrary.Services
                 }
                 catch (Exception ex) when (ex.Message.Contains("401") || ex.Message.Contains("Unauthorized"))
                 {
-                    logger.Error(ex, "Authentication failed - stored member_no may be invalid");
+                    logger.Error(ex, "Authentication failed - token may be expired");
+                    authService?.InvalidateTokens();
                     throw new UnauthorizedAccessException("Auth token expired or invalid", ex);
                 }
                 catch (Exception ex)

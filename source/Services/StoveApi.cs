@@ -24,7 +24,7 @@ namespace StoveLibrary.Services
             
             httpService = new StoveHttpService();
             authService = new StoveAuthService(api, settings);
-            gamesService = new StoveGamesService(httpService);
+            gamesService = new StoveGamesService(httpService, authService);
             storeService = new StoveStoreService(api, settings, httpService);
         }
 
@@ -101,8 +101,8 @@ namespace StoveLibrary.Services
             }
             catch (UnauthorizedAccessException)
             {
-                logger.Error("Authentication failed - clearing stored member_no");
-                settings.StoredMemberNo = null;
+                logger.Error("Authentication failed - clearing stored tokens");
+                authService.InvalidateTokens();
                 throw;
             }
             catch (Exception ex)
