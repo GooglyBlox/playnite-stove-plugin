@@ -94,6 +94,20 @@ namespace StoveLibrary.Services
             }
         }
 
+        public SessionResponse RefreshSession()
+        {
+            try
+            {
+                settings.StoredMemberNo = null;
+                return GetSessionData();
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, "Error refreshing session");
+                throw;
+            }
+        }
+
         public void Login()
         {
             IWebView webView = null;

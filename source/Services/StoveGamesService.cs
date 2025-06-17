@@ -23,6 +23,7 @@ namespace StoveLibrary.Services
             var allGames = new List<StoveGameData>();
             int page = 1;
             int totalPages = 1;
+            bool retried = false;
 
             do
             {
@@ -34,6 +35,7 @@ namespace StoveLibrary.Services
                         allGames.AddRange(games.Value.Content);
                         totalPages = games.Value.TotalPages;
                         page++;
+                        retried = false;
                     }
                     else
                     {
@@ -43,7 +45,28 @@ namespace StoveLibrary.Services
                 }
                 catch (Exception ex) when (ex.Message.Contains("401") || ex.Message.Contains("Unauthorized"))
                 {
-                    logger.Error(ex, "Authentication failed - token may be expired");
+                    if (!retried && authService != null)
+                    {
+                        logger.Info("Access token may be expired, attempting to refresh session");
+                        retried = true;
+                        
+                        try
+                        {
+                            var newSession = authService.RefreshSession();
+                            if (newSession?.Value?.AccessToken != null)
+                            {
+                                authToken = newSession.Value.AccessToken;
+                                logger.Info("Session refreshed successfully, retrying request");
+                                continue;
+                            }
+                        }
+                        catch (Exception refreshEx)
+                        {
+                            logger.Error(refreshEx, "Failed to refresh session");
+                        }
+                    }
+                    
+                    logger.Error(ex, "Authentication failed after retry - token may be invalid");
                     authService?.InvalidateTokens();
                     throw new UnauthorizedAccessException("Auth token expired or invalid", ex);
                 }
