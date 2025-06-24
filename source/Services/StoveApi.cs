@@ -11,7 +11,6 @@ namespace StoveLibrary.Services
     {
         private readonly ILogger logger = LogManager.GetLogger();
         private readonly IPlayniteAPI api;
-        private readonly StoveLibrarySettings settings;
         private readonly StoveAuthService authService;
         private readonly StoveGamesService gamesService;
         private readonly StoveStoreService storeService;
@@ -20,8 +19,8 @@ namespace StoveLibrary.Services
         public StoveApi(IPlayniteAPI playniteApi, StoveLibrarySettings pluginSettings)
         {
             api = playniteApi ?? throw new ArgumentNullException(nameof(playniteApi));
-            settings = pluginSettings ?? throw new ArgumentNullException(nameof(pluginSettings));
-            
+            var settings = pluginSettings ?? throw new ArgumentNullException(nameof(pluginSettings));
+
             httpService = new StoveHttpService();
             authService = new StoveAuthService(api, settings);
             gamesService = new StoveGamesService(httpService, authService);
@@ -98,12 +97,6 @@ namespace StoveLibrary.Services
                         logger.Error(ex, $"Failed to process game: {game.GameId}");
                     }
                 }
-            }
-            catch (UnauthorizedAccessException)
-            {
-                logger.Error("Authentication failed - clearing stored tokens");
-                authService.InvalidateTokens();
-                throw;
             }
             catch (Exception ex)
             {

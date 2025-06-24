@@ -33,14 +33,15 @@ namespace StoveLibrary
         public StoveLibrary(IPlayniteAPI api) : base(api)
         {
             Instance = this;
-            Properties = new LibraryPluginProperties { 
+            Properties = new LibraryPluginProperties
+            {
                 CanShutdownClient = false,
-                HasSettings = true 
+                HasSettings = true
             };
             settingsVm = new StoveLibrarySettingsViewModel(this);
 
             StoveApi = new StoveApi(api, settingsVm.Settings);
-            
+
             gameMonitor = new StoveGameMonitor(api, settingsVm.Settings);
         }
 
@@ -56,22 +57,17 @@ namespace StoveLibrary
 
             try
             {
-                if (!StoveApi.GetIsUserLoggedIn())
-                {
-                    throw new Exception("User is not logged in.");
-                }
-
-                allGames = StoveApi.GetOwnedGames();
+                allGames = GetOwnedGamesWithRetry();
 
                 if (settingsVm.Settings.ImportInstalledGames)
                 {
                     var installedGames = StoveRegistryHelper.GetInstalledStoveGames();
-                    
+
                     foreach (var game in allGames)
                     {
-                        var installInfo = installedGames.FirstOrDefault(ig => 
+                        var installInfo = installedGames.FirstOrDefault(ig =>
                             string.Equals(ig.DisplayName, game.Name, StringComparison.OrdinalIgnoreCase));
-                        
+
                         if (installInfo != null)
                         {
                             game.IsInstalled = true;
@@ -107,6 +103,44 @@ namespace StoveLibrary
             }
 
             return allGames;
+        }
+
+        private List<GameMetadata> GetOwnedGamesWithRetry()
+        {
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    if (!StoveApi.GetIsUserLoggedIn())
+                    {
+                        if (attempt == 0)
+                        {
+                            logger.Info($"User not logged in on attempt {attempt + 1}, retrying...");
+                            System.Threading.Thread.Sleep(2000);
+                            continue;
+                        }
+                        else
+                        {
+                            throw new Exception("User is not logged in.");
+                        }
+                    }
+
+                    var games = StoveApi.GetOwnedGames();
+                    logger.Info($"Successfully retrieved {games.Count} games on attempt {attempt + 1}");
+                    return games;
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn(ex, $"Attempt {attempt + 1} failed to get owned games");
+                    if (attempt == 2)
+                    {
+                        throw;
+                    }
+                    System.Threading.Thread.Sleep(2000);
+                }
+            }
+
+            throw new Exception("Failed to get owned games after 3 attempts");
         }
 
         public override IEnumerable<InstallController> GetInstallActions(GetInstallActionsArgs args)

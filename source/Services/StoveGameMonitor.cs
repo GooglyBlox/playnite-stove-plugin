@@ -1,5 +1,4 @@
 using Playnite.SDK;
-using Playnite.SDK.Events;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -16,6 +15,9 @@ namespace StoveLibrary.Services
         private readonly StoveLibrarySettings settings;
         private Timer monitorTimer;
         private readonly Dictionary<string, GameTrackingInfo> trackedGames = new Dictionary<string, GameTrackingInfo>();
+        private List<StoveGameInstallInfo> cachedInstalledGames = new List<StoveGameInstallInfo>();
+        private DateTime lastGameListRefresh = DateTime.MinValue;
+        private readonly TimeSpan gameListRefreshInterval = TimeSpan.FromMinutes(5);
         private bool disposed = false;
 
         private class GameTrackingInfo
@@ -46,10 +48,11 @@ namespace StoveLibrary.Services
                 if (!settings.ConnectAccount)
                     return;
 
-                var installedGames = StoveRegistryHelper.GetInstalledStoveGames();
+                RefreshInstalledGamesIfNeeded();
+
                 var currentlyTracked = new HashSet<string>();
 
-                foreach (var installedGame in installedGames)
+                foreach (var installedGame in cachedInstalledGames)
                 {
                     try
                     {
@@ -75,7 +78,6 @@ namespace StoveLibrary.Services
                                     };
 
                                     trackedGames[gameKey] = trackingInfo;
-                                    logger.Info($"Started tracking externally launched game: {installedGame.DisplayName}");
 
                                     NotifyGameStarted(playniteGame, runningProcesses.First().Id);
                                     trackingInfo.NotifiedStarted = true;
@@ -90,11 +92,10 @@ namespace StoveLibrary.Services
                         {
                             var trackingInfo = trackedGames[gameKey];
                             var playTime = DateTime.Now.Subtract(trackingInfo.StartTime).TotalSeconds;
-                            
+
                             var playniteGame = FindPlayniteGame(trackingInfo.GameName);
                             if (playniteGame != null && trackingInfo.NotifiedStarted)
                             {
-                                logger.Info($"Game stopped: {trackingInfo.GameName}, played for {playTime:F0} seconds");
                                 NotifyGameStopped(playniteGame, (ulong)Math.Max(0, playTime));
                             }
 
@@ -112,11 +113,10 @@ namespace StoveLibrary.Services
                 {
                     var trackingInfo = trackedGames[key];
                     var playTime = DateTime.Now.Subtract(trackingInfo.StartTime).TotalSeconds;
-                    
+
                     var playniteGame = FindPlayniteGame(trackingInfo.GameName);
                     if (playniteGame != null && trackingInfo.NotifiedStarted)
                     {
-                        logger.Info($"Game stopped: {trackingInfo.GameName}, played for {playTime:F0} seconds");
                         NotifyGameStopped(playniteGame, (ulong)Math.Max(0, playTime));
                     }
 
@@ -126,6 +126,15 @@ namespace StoveLibrary.Services
             catch (Exception ex)
             {
                 logger.Error(ex, "Error in game monitoring");
+            }
+        }
+
+        private void RefreshInstalledGamesIfNeeded()
+        {
+            if (DateTime.Now - lastGameListRefresh > gameListRefreshInterval)
+            {
+                cachedInstalledGames = StoveRegistryHelper.GetInstalledStoveGames(true);
+                lastGameListRefresh = DateTime.Now;
             }
         }
 
@@ -213,7 +222,7 @@ namespace StoveLibrary.Services
         {
             try
             {
-                return api.Database.Games.FirstOrDefault(g => 
+                return api.Database.Games.FirstOrDefault(g =>
                     g.PluginId == Guid.Parse("2a62a584-2cc3-4220-8da6-cf4ac588a439") &&
                     string.Equals(g.Name, gameName, StringComparison.OrdinalIgnoreCase));
             }
@@ -243,8 +252,6 @@ namespace StoveLibrary.Services
                 game.IsRunning = true;
                 game.LastActivity = DateTime.Now;
                 api.Database.Games.Update(game);
-
-                logger.Info($"Notified Playnite that game started: {game.Name} (PID: {processId})");
             }
             catch (Exception ex)
             {
@@ -263,8 +270,6 @@ namespace StoveLibrary.Services
                     game.LastActivity = DateTime.Now;
                 }
                 api.Database.Games.Update(game);
-
-                logger.Info($"Notified Playnite that game stopped: {game.Name}, session time: {playTimeSeconds} seconds");
             }
             catch (Exception ex)
             {
@@ -277,7 +282,7 @@ namespace StoveLibrary.Services
             if (!disposed)
             {
                 monitorTimer?.Dispose();
-                
+
                 foreach (var tracking in trackedGames.Values)
                 {
                     try
@@ -294,7 +299,7 @@ namespace StoveLibrary.Services
                         logger.Error(ex, "Error cleaning up tracked game");
                     }
                 }
-                
+
                 trackedGames.Clear();
                 disposed = true;
             }

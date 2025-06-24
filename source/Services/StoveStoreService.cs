@@ -104,7 +104,7 @@ namespace StoveLibrary.Services
                 {
                     var content = response.Content.ReadAsStringAsync().Result;
                     var gameData = JsonConvert.DeserializeObject<dynamic>(content);
-                    
+
                     if (gameData?.result == "000" && gameData.value?.developer != null)
                     {
                         return gameData.value.developer.ToString();
@@ -142,7 +142,7 @@ namespace StoveLibrary.Services
                 {
                     var content = response.Content.ReadAsStringAsync().Result;
                     var gameData = JsonConvert.DeserializeObject<dynamic>(content);
-                    
+
                     if (gameData?.code == 0 && gameData.value?.distributor != null)
                     {
                         return gameData.value.distributor.ToString();

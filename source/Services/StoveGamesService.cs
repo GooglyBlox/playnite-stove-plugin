@@ -23,7 +23,6 @@ namespace StoveLibrary.Services
             var allGames = new List<StoveGameData>();
             int page = 1;
             int totalPages = 1;
-            bool retried = false;
 
             do
             {
@@ -35,40 +34,12 @@ namespace StoveLibrary.Services
                         allGames.AddRange(games.Value.Content);
                         totalPages = games.Value.TotalPages;
                         page++;
-                        retried = false;
                     }
                     else
                     {
                         logger.Warn($"No games data returned for page {page}");
                         break;
                     }
-                }
-                catch (Exception ex) when (ex.Message.Contains("401") || ex.Message.Contains("Unauthorized"))
-                {
-                    if (!retried && authService != null)
-                    {
-                        logger.Info("Access token may be expired, attempting to refresh session");
-                        retried = true;
-                        
-                        try
-                        {
-                            var newSession = authService.RefreshSession();
-                            if (newSession?.Value?.AccessToken != null)
-                            {
-                                authToken = newSession.Value.AccessToken;
-                                logger.Info("Session refreshed successfully, retrying request");
-                                continue;
-                            }
-                        }
-                        catch (Exception refreshEx)
-                        {
-                            logger.Error(refreshEx, "Failed to refresh session");
-                        }
-                    }
-                    
-                    logger.Error(ex, "Authentication failed after retry - token may be invalid");
-                    authService?.InvalidateTokens();
-                    throw new UnauthorizedAccessException("Auth token expired or invalid", ex);
                 }
                 catch (Exception ex)
                 {
@@ -97,14 +68,8 @@ namespace StoveLibrary.Services
                 else
                 {
                     var errorContent = response.Content.ReadAsStringAsync().Result;
-
-                    if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                    {
-                        throw new Exception($"401 Unauthorized: {errorContent}");
-                    }
-
                     logger.Error($"API request failed: {response.StatusCode} - {errorContent}");
-                    return null;
+                    throw new Exception($"API request failed: {response.StatusCode} - {errorContent}");
                 }
             }
             catch (Exception ex)

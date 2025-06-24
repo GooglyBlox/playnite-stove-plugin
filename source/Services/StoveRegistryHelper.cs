@@ -21,7 +21,7 @@ namespace StoveLibrary
         private static readonly ILogger logger = LogManager.GetLogger();
         private const string UninstallRegistryPath = @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall";
 
-        public static List<StoveGameInstallInfo> GetInstalledStoveGames()
+        public static List<StoveGameInstallInfo> GetInstalledStoveGames(bool logResults = false)
         {
             var installedGames = new List<StoveGameInstallInfo>();
 
@@ -32,13 +32,14 @@ namespace StoveLibrary
                 {
                     if (uninstallKey == null)
                     {
-                        logger.Warn("Uninstall registry key not found");
+                        if (logResults)
+                            logger.Warn("Uninstall registry key not found");
                         return installedGames;
                     }
 
                     foreach (string subKeyName in uninstallKey.GetSubKeyNames())
                     {
-                        if (!subKeyName.StartsWith("Stove", StringComparison.OrdinalIgnoreCase) || 
+                        if (!subKeyName.StartsWith("Stove", StringComparison.OrdinalIgnoreCase) ||
                             subKeyName.Equals("StoveLauncher", StringComparison.OrdinalIgnoreCase))
                         {
                             continue;
@@ -79,7 +80,8 @@ namespace StoveLibrary
                                     };
 
                                     installedGames.Add(gameInfo);
-                                    logger.Debug($"Found installed STOVE game: {displayName} at {executablePath}");
+                                    if (logResults)
+                                        logger.Debug($"Found installed STOVE game: {displayName} at {executablePath}");
                                 }
                             }
                         }
@@ -104,7 +106,7 @@ namespace StoveLibrary
                 return null;
 
             var installedGames = GetInstalledStoveGames();
-            return installedGames.FirstOrDefault(g => 
+            return installedGames.FirstOrDefault(g =>
                 string.Equals(g.DisplayName, gameName, StringComparison.OrdinalIgnoreCase));
         }
 

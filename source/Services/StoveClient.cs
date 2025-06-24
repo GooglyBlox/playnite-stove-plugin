@@ -110,7 +110,7 @@ namespace StoveLibrary.Services
                         FileName = stoveExePath,
                         UseShellExecute = true
                     };
-                    
+
                     using (var process = Process.Start(startInfo))
                     {
                         if (process == null)
@@ -159,7 +159,7 @@ namespace StoveLibrary.Services
             try
             {
                 Process[] stoveProcesses = null;
-                
+
                 try
                 {
                     stoveProcesses = Process.GetProcessesByName("STOVE");
