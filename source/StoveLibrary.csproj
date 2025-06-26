@@ -174,4 +174,24 @@
     </PackageReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  
+  <Target Name="CleanupBuildOutput" AfterTargets="Build">
+    <ItemGroup>
+      <FilesToKeep Include="$(OutputPath)AngleSharp.dll" />
+      <FilesToKeep Include="$(OutputPath)extension.yaml" />
+      <FilesToKeep Include="$(OutputPath)icon.png" />
+      <FilesToKeep Include="$(OutputPath)Newtonsoft.Json.dll" />
+      <FilesToKeep Include="$(OutputPath)RateLimiter.dll" />
+      <FilesToKeep Include="$(OutputPath)StoveLibrary.dll" />
+      <FilesToKeep Include="$(OutputPath)StoveLibrary.dll.config" />
+      <FilesToKeep Include="$(OutputPath)StoveLibrary.pdb" />
+      
+      <AllOutputFiles Include="$(OutputPath)*.*" />
+      
+      <FilesToDelete Include="@(AllOutputFiles)" Exclude="@(FilesToKeep)" />
+    </ItemGroup>
+    
+    <Delete Files="@(FilesToDelete)" ContinueOnError="true" />    
+  </Target>
+  
 </Project>
