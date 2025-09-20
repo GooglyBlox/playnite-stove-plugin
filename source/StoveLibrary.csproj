@@ -178,6 +178,7 @@
   <Target Name="CleanupBuildOutput" AfterTargets="Build">
     <ItemGroup>
       <FilesToKeep Include="$(OutputPath)AngleSharp.dll" />
+      <FilesToKeep Include="$(OutputPath)ComposableAsync.Core.dll" />
       <FilesToKeep Include="$(OutputPath)extension.yaml" />
       <FilesToKeep Include="$(OutputPath)icon.png" />
       <FilesToKeep Include="$(OutputPath)Newtonsoft.Json.dll" />
