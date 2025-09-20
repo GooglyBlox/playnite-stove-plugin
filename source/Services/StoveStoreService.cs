@@ -107,7 +107,8 @@ namespace StoveLibrary.Services
 
                     if (gameData?.result == "000" && gameData.value?.developer != null)
                     {
-                        return gameData.value.developer.ToString();
+                        var developer = gameData.value.developer.ToString();
+                        return System.Web.HttpUtility.HtmlDecode(developer);
                     }
                 }
                 else
@@ -145,7 +146,8 @@ namespace StoveLibrary.Services
 
                     if (gameData?.code == 0 && gameData.value?.distributor != null)
                     {
-                        return gameData.value.distributor.ToString();
+                        var publisher = gameData.value.distributor.ToString();
+                        return System.Web.HttpUtility.HtmlDecode(publisher);
                     }
                 }
                 else

@@ -112,14 +112,14 @@ namespace StoveLibrary.Services
                 if (storeDetails.Genres != null && storeDetails.Genres.Any())
                 {
                     meta.Genres = new HashSet<MetadataProperty>(
-                        storeDetails.Genres.Select(g => new MetadataNameProperty(g.TagName))
+                        storeDetails.Genres.Select(g => new MetadataNameProperty(System.Web.HttpUtility.HtmlDecode(g.TagName)))
                     );
                 }
 
                 if (Settings.ImportTags && storeDetails.Tags != null && storeDetails.Tags.Any())
                 {
                     meta.Tags = new HashSet<MetadataProperty>(
-                        storeDetails.Tags.Select(t => new MetadataNameProperty(t.TagName))
+                        storeDetails.Tags.Select(t => new MetadataNameProperty(System.Web.HttpUtility.HtmlDecode(t.TagName)))
                     );
                 }
 
