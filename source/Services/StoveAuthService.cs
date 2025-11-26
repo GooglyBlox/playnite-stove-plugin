@@ -74,7 +74,7 @@ namespace StoveLibrary.Services
         {
             try
             {
-                webView.Navigate("https://www.onstove.com/");
+                webView.Navigate("https://store.onstove.com/");
                 Thread.Sleep(2000);
 
                 return ExtractSessionFromCookies(webView);
@@ -99,7 +99,7 @@ namespace StoveLibrary.Services
                     return sessionData;
                 }
 
-                webView.Navigate("https://www.onstove.com/");
+                webView.Navigate("https://store.onstove.com/");
                 Thread.Sleep(2000);
 
                 return ExtractSessionFromCookies(webView);
@@ -164,7 +164,7 @@ namespace StoveLibrary.Services
 
             try
             {
-                webView.Navigate("https://library.onstove.com/");
+                webView.Navigate("https://store.onstove.com/");
                 Thread.Sleep(2000);
 
                 cookies = webView.GetCookies();
@@ -176,7 +176,7 @@ namespace StoveLibrary.Services
             }
             catch (Exception ex)
             {
-                logger.Debug(ex, "Failed to get member number from library page");
+                logger.Debug(ex, "Failed to get member number from store page");
             }
 
             return null;
@@ -184,6 +184,43 @@ namespace StoveLibrary.Services
 
         private long? GetMemberNoFromCookies(System.Collections.Generic.IEnumerable<HttpCookie> cookies)
         {
+            try
+            {
+                var pldCookie = cookies.FirstOrDefault(c => c.Name == "PLD");
+                if (pldCookie != null && !string.IsNullOrEmpty(pldCookie.Value))
+                {
+                    var decodedJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(pldCookie.Value));
+                    var memberInfo = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(decodedJson);
+                    return (long)memberInfo.member_no;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Debug(ex, "Error parsing member number from PLD cookie");
+            }
+
+            try
+            {
+                var suatCookie = cookies.FirstOrDefault(c => c.Name == "SUAT");
+                if (suatCookie != null && !string.IsNullOrEmpty(suatCookie.Value))
+                {
+                    var parts = suatCookie.Value.Split('.');
+                    if (parts.Length >= 2)
+                    {
+                        var payload = parts[1];
+                        var paddedPayload = payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '=');
+                        var decodedJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(paddedPayload));
+                        var memberInfo = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(decodedJson);
+                        return (long)memberInfo.member_no;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Debug(ex, "Error parsing member number from SUAT JWT");
+            }
+
+            // Legacy fallback: try SUMT_INFO cookie (old format)
             try
             {
                 var sumtCookie = cookies.FirstOrDefault(c => c.Name == "SUMT_INFO");
@@ -197,7 +234,7 @@ namespace StoveLibrary.Services
             }
             catch (Exception ex)
             {
-                logger.Debug(ex, "Error parsing member number from cookies");
+                logger.Debug(ex, "Error parsing member number from SUMT_INFO cookie");
             }
 
             return null;
@@ -222,7 +259,8 @@ namespace StoveLibrary.Services
                     try
                     {
                         var currentUrl = webView.GetCurrentAddress();
-                        if (currentUrl.StartsWith("https://www.onstove.com/", StringComparison.OrdinalIgnoreCase))
+                        if (currentUrl.StartsWith("https://www.onstove.com/", StringComparison.OrdinalIgnoreCase) ||
+                            currentUrl.StartsWith("https://store.onstove.com/", StringComparison.OrdinalIgnoreCase))
                         {
                             logger.Info("Login successful");
                             loginCompleted = true;
