@@ -82,6 +82,7 @@
     <Compile Include="Models\StoveApiModels.cs" />
     <Compile Include="Models\StoveGameData.cs" />
     <Compile Include="Services\StoveAuthService.cs" />
+    <Compile Include="Services\StoveAuthenticationException.cs" />
     <Compile Include="Services\StoveGamesService.cs" />
     <Compile Include="Services\StoveStoreService.cs" />
     <Compile Include="Services\StoveHttpService.cs" />

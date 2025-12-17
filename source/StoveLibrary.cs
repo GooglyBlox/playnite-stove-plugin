@@ -129,6 +129,19 @@ namespace StoveLibrary
                     logger.Info($"Successfully retrieved {games.Count} games on attempt {attempt + 1}");
                     return games;
                 }
+                catch (StoveAuthenticationException authEx)
+                {
+                    logger.Warn(authEx, "Authentication expired, clearing session and prompting re-login");
+                    try
+                    {
+                        StoveApi.Logout();
+                    }
+                    catch (Exception logoutEx)
+                    {
+                        logger.Error(logoutEx, "Error during logout after auth failure");
+                    }
+                    throw new Exception("Your STOVE session has expired. Please sign in again in the plugin settings.", authEx);
+                }
                 catch (Exception ex)
                 {
                     logger.Warn(ex, $"Attempt {attempt + 1} failed to get owned games");

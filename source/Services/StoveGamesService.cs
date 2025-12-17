@@ -41,6 +41,11 @@ namespace StoveLibrary.Services
                         break;
                     }
                 }
+                catch (StoveAuthenticationException)
+                {
+                    // Re-throw auth exceptions so they can be handled at a higher level
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     logger.Error(ex, $"Error fetching games page {page}");
@@ -67,8 +72,17 @@ namespace StoveLibrary.Services
                 }
                 else
                 {
+                    var statusCode = (int)response.StatusCode;
                     var errorContent = response.Content.ReadAsStringAsync().Result;
                     logger.Error($"API request failed: {response.StatusCode} - {errorContent}");
+
+                    if (statusCode == 401 || statusCode == 403)
+                    {
+                        throw new StoveAuthenticationException(
+                            $"Authentication failed: {response.StatusCode}. Please sign in again.",
+                            statusCode);
+                    }
+
                     throw new Exception($"API request failed: {response.StatusCode} - {errorContent}");
                 }
             }
