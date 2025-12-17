@@ -1,0 +1,127 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Restore NuGet packages
+        run: nuget restore source/StoveLibrary.sln
+
+      - name: Build solution
+        run: msbuild source/StoveLibrary.sln /p:Configuration=Release /p:Platform="Any CPU"
+
+      - name: Extract version info
+        id: version
+        shell: pwsh
+        run: |
+          $extensionYaml = Get-Content "source/extension.yaml" -Raw
+          $version = [regex]::Match($extensionYaml, 'Version:\s*(.+)').Groups[1].Value.Trim()
+
+          $versionUnderscore = $version -replace '\.', '_'
+
+          $addonId = [regex]::Match($extensionYaml, 'Id:\s*(.+)').Groups[1].Value.Trim()
+
+          $pextName = "${addonId}_${versionUnderscore}.pext"
+
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          echo "VERSION_UNDERSCORE=$versionUnderscore" >> $env:GITHUB_OUTPUT
+          echo "ADDON_ID=$addonId" >> $env:GITHUB_OUTPUT
+          echo "PEXT_NAME=$pextName" >> $env:GITHUB_OUTPUT
+
+          Write-Host "Version: $version"
+          Write-Host "Pext filename: $pextName"
+
+      - name: Extract changelog
+        id: changelog
+        shell: pwsh
+        run: |
+          $manifest = Get-Content "source/installermanifest.yaml" -Raw
+
+          $pattern = "(?s)Packages:\s*\n\s*-\s*Version:\s*[\d.]+.*?Changelog:\s*\n((?:\s*-\s*.+\n?)+)"
+          $match = [regex]::Match($manifest, $pattern)
+
+          if ($match.Success) {
+              $changelogRaw = $match.Groups[1].Value
+              $changelogLines = $changelogRaw -split "`n" |
+                  Where-Object { $_ -match '^\s*-\s*.+' } |
+                  ForEach-Object { $_ -replace '^\s*-\s*', ' - ' }
+              $changelog = $changelogLines -join "`n"
+          } else {
+              $changelog = " - No changelog provided"
+          }
+
+          Write-Host "Changelog:`n$changelog"
+
+          $changelog | Out-File -FilePath changelog.txt -Encoding utf8 -NoNewline
+
+      - name: Create pext package
+        shell: pwsh
+        run: |
+          $outputDir = "source/bin/Release"
+          $pextName = "${{ steps.version.outputs.PEXT_NAME }}"
+
+          Compress-Archive -Path "$outputDir/*" -DestinationPath $pextName -Force
+
+          Write-Host "Created package: $pextName"
+          Get-ChildItem $pextName
+
+      - name: Get previous tag
+        id: previoustag
+        shell: pwsh
+        run: |
+          $tags = git tag --sort=-version:refname | Select-Object -Skip 1 -First 1
+          if ($tags) {
+              echo "TAG=$tags" >> $env:GITHUB_OUTPUT
+              Write-Host "Previous tag: $tags"
+          } else {
+              echo "TAG=" >> $env:GITHUB_OUTPUT
+              Write-Host "No previous tag found"
+          }
+
+      - name: Generate release body
+        id: releasebody
+        shell: pwsh
+        run: |
+          $previousTag = "${{ steps.previoustag.outputs.TAG }}"
+          $currentTag = "${{ github.ref_name }}"
+          $repo = "${{ github.repository }}"
+
+          $changelogContent = Get-Content -Path changelog.txt -Raw
+
+          $body = "**Changelog:**`n$changelogContent"
+
+          if ($previousTag) {
+              $body += "`n`n**Full Changelog**: https://github.com/$repo/compare/$previousTag...$currentTag"
+          }
+
+          $body | Out-File -FilePath release_body.md -Encoding utf8
+          Write-Host $body
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: v${{ steps.version.outputs.VERSION }}
+          tag_name: ${{ github.ref_name }}
+          body_path: release_body.md
+          files: ${{ steps.version.outputs.PEXT_NAME }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
