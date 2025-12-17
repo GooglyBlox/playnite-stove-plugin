@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build-and-release:
     runs-on: windows-latest
@@ -21,8 +24,23 @@ jobs:
       - name: Setup NuGet
         uses: NuGet/setup-nuget@v2
 
-      - name: Restore NuGet packages
-        run: nuget restore source/StoveLibrary.sln
+      - name: Restore packages.config packages
+        working-directory: source
+        run: nuget install packages.config -OutputDirectory packages
+
+      - name: Verify packages restored
+        shell: pwsh
+        run: |
+          Write-Host "Checking packages directory..."
+          if (Test-Path "source/packages") {
+            Get-ChildItem "source/packages" -Directory | ForEach-Object { Write-Host $_.Name }
+          } else {
+            Write-Host "ERROR: packages directory not found!"
+            exit 1
+          }
+
+      - name: Restore PackageReference packages
+        run: msbuild source/StoveLibrary.sln /t:Restore /p:Configuration=Release
 
       - name: Build solution
         run: msbuild source/StoveLibrary.sln /p:Configuration=Release /p:Platform="Any CPU"
