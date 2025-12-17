@@ -72,14 +72,14 @@ jobs:
         run: |
           $manifest = Get-Content "source/installermanifest.yaml" -Raw
 
-          $pattern = "(?s)Packages:\s*\n\s*-\s*Version:\s*[\d.]+.*?Changelog:\s*\n((?:\s*-\s*.+\n?)+)"
+          $pattern = "(?s)Packages:\s*\n\s*-\s*Version:[^\n]+\n\s+RequiredApiVersion:[^\n]+\n\s+ReleaseDate:[^\n]+\n\s+PackageUrl:[^\n]+\n\s+Changelog:\s*\n((?:\s+-\s+[^V\n][^\n]*\n?)+)"
           $match = [regex]::Match($manifest, $pattern)
 
           if ($match.Success) {
               $changelogRaw = $match.Groups[1].Value
               $changelogLines = $changelogRaw -split "`n" |
-                  Where-Object { $_ -match '^\s*-\s*.+' } |
-                  ForEach-Object { $_ -replace '^\s*-\s*', ' - ' }
+                  Where-Object { $_ -match '^\s+-\s+.+' } |
+                  ForEach-Object { ($_ -replace '^\s+-\s+', ' - ').TrimEnd() }
               $changelog = $changelogLines -join "`n"
           } else {
               $changelog = " - No changelog provided"
