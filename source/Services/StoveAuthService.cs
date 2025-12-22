@@ -121,12 +121,6 @@ namespace StoveLibrary.Services
                 return null;
             }
 
-            if (IsTokenExpired(suatCookie.Value))
-            {
-                logger.Warn("SUAT token has expired");
-                return null;
-            }
-
             var memberNo = GetMemberNoFromCookiesWithRetry(webView, cookies);
             if (!memberNo.HasValue)
             {
@@ -146,49 +140,6 @@ namespace StoveLibrary.Services
                 Message = "OK",
                 Result = "000"
             };
-        }
-
-        private bool IsTokenExpired(string jwtToken)
-        {
-            try
-            {
-                var parts = jwtToken.Split('.');
-                if (parts.Length < 2)
-                {
-                    return true; // Invalid JWT format, treat as expired
-                }
-
-                var payload = parts[1];
-                var paddedPayload = payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '=');
-                var decodedJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(paddedPayload));
-                var tokenData = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(decodedJson);
-
-                if (tokenData.exp != null)
-                {
-                    long expTimestamp = (long)tokenData.exp;
-                    var expirationTime = DateTimeOffset.FromUnixTimeSeconds(expTimestamp);
-                    var now = DateTimeOffset.UtcNow;
-
-                    if (expirationTime <= now)
-                    {
-                        logger.Debug($"Token expired at {expirationTime}, current time is {now}");
-                        return true;
-                    }
-
-                    // Also log if token is about to expire soon (within 5 minutes)
-                    if (expirationTime <= now.AddMinutes(5))
-                    {
-                        logger.Warn($"Token expires soon at {expirationTime}");
-                    }
-                }
-
-                return false;
-            }
-            catch (Exception ex)
-            {
-                logger.Debug(ex, "Error checking token expiry, assuming valid");
-                return false; // If we can't parse, don't block - let the API call determine validity
-            }
         }
 
         private long? GetMemberNoFromCookiesWithRetry(IWebView webView, System.Collections.Generic.IEnumerable<HttpCookie> cookies)
