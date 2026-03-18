@@ -1,7 +1,9 @@
 using Playnite.SDK;
 using StoveLibrary.Models;
 using System;
+using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 
 namespace StoveLibrary.Services
@@ -11,11 +13,68 @@ namespace StoveLibrary.Services
         private readonly ILogger logger = LogManager.GetLogger();
         private readonly IPlayniteAPI api;
         private readonly StoveLibrarySettings settings;
+        private readonly string sessionFilePath;
+        private SessionResponse cachedSession;
 
-        public StoveAuthService(IPlayniteAPI playniteApi, StoveLibrarySettings pluginSettings)
+        public StoveAuthService(IPlayniteAPI playniteApi, StoveLibrarySettings pluginSettings, string dataPath = null)
         {
             api = playniteApi ?? throw new ArgumentNullException(nameof(playniteApi));
             settings = pluginSettings ?? throw new ArgumentNullException(nameof(pluginSettings));
+
+            if (!string.IsNullOrEmpty(dataPath))
+            {
+                sessionFilePath = Path.Combine(dataPath, "session.json");
+                LoadCachedSession();
+            }
+        }
+
+        private void LoadCachedSession()
+        {
+            try
+            {
+                if (File.Exists(sessionFilePath))
+                {
+                    var json = File.ReadAllText(sessionFilePath);
+                    cachedSession = Newtonsoft.Json.JsonConvert.DeserializeObject<SessionResponse>(json);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, "Failed to load cached session from disk");
+                cachedSession = null;
+            }
+        }
+
+        private void SaveCachedSession(SessionResponse session)
+        {
+            cachedSession = session;
+            if (string.IsNullOrEmpty(sessionFilePath)) return;
+
+            try
+            {
+                var json = Newtonsoft.Json.JsonConvert.SerializeObject(session);
+                File.WriteAllText(sessionFilePath, json);
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, "Failed to save session to disk");
+            }
+        }
+
+        private void ClearCachedSession()
+        {
+            cachedSession = null;
+            if (string.IsNullOrEmpty(sessionFilePath)) return;
+
+            try
+            {
+                if (File.Exists(sessionFilePath))
+                    File.Delete(sessionFilePath);
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, "Failed to delete session file");
+            }
         }
 
         public bool GetIsUserLoggedIn()
@@ -34,6 +93,22 @@ namespace StoveLibrary.Services
 
         public SessionResponse GetSessionData()
         {
+            if (cachedSession?.Value != null && !string.IsNullOrEmpty(cachedSession.Value.RefreshToken))
+            {
+                if (!string.IsNullOrEmpty(cachedSession.Value.AccessToken) && !cachedSession.Value.IsExpiringSoon)
+                {
+                    return cachedSession;
+                }
+                var renewed = TryRenewSession(cachedSession.Value.AccessToken, cachedSession.Value.RefreshToken);
+                if (renewed != null)
+                {
+                    SaveCachedSession(renewed);
+                    return renewed;
+                }
+
+                logger.Warn("Token renewal failed, falling back to WebView");
+            }
+
             IWebView webView = null;
             try
             {
@@ -47,12 +122,14 @@ namespace StoveLibrary.Services
                 var sessionData = TryGetSessionFromMainPage(webView);
                 if (sessionData != null)
                 {
+                    SaveCachedSession(sessionData);
                     return sessionData;
                 }
 
                 sessionData = TryGetSessionFromAccountPage(webView);
                 if (sessionData != null)
                 {
+                    SaveCachedSession(sessionData);
                     return sessionData;
                 }
 
@@ -70,18 +147,76 @@ namespace StoveLibrary.Services
             }
         }
 
+        private SessionResponse TryRenewSession(string accessToken, string refreshToken)
+        {
+            try
+            {
+                using (var httpClient = new HttpClient())
+                {
+                    httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {accessToken}");
+                    httpClient.DefaultRequestHeaders.Add("caller-id", "indie-web-store");
+                    httpClient.DefaultRequestHeaders.Add("X-Lang", "en");
+                    httpClient.DefaultRequestHeaders.Add("X-Nation", "US");
+                    httpClient.DefaultRequestHeaders.Add("X-Device-Type", "pc");
+                    httpClient.DefaultRequestHeaders.Add("X-Timezone", "America/Los_Angeles");
+                    httpClient.DefaultRequestHeaders.Add("X-Utc-Offset", "-420");
+                    httpClient.DefaultRequestHeaders.Add("Origin", "https://store.onstove.com");
+                    httpClient.DefaultRequestHeaders.Add("Referer", "https://store.onstove.com/");
+                    httpClient.DefaultRequestHeaders.Add("User-Agent",
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.7499.194 Safari/537.36");
+                    httpClient.DefaultRequestHeaders.Accept.Clear();
+                    httpClient.DefaultRequestHeaders.Accept.Add(
+                        new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
+                    var bodyStr = $"refresh_token={Uri.EscapeDataString(refreshToken)}" +
+                        "&properties=[\"user_id\",\"country_cd\",\"person_verify_yn\",\"parent_verify_yn\"]";
+                    var content = new System.Net.Http.ByteArrayContent(System.Text.Encoding.UTF8.GetBytes(bodyStr));
+                    content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-www-form-urlencoded");
+
+                    var response = httpClient.PostAsync("https://auth.onstove.com/v1.0/common/renew", content).Result;
+                    var responseBody = response.Content.ReadAsStringAsync().Result;
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        logger.Warn($"Token renewal failed: {response.StatusCode}");
+                        return null;
+                    }
+
+                    var renewResponse = Newtonsoft.Json.JsonConvert.DeserializeObject<SessionResponse>(responseBody);
+
+                    if (renewResponse?.Value == null || string.IsNullOrEmpty(renewResponse.Value.AccessToken))
+                    {
+                        logger.Warn($"Token renewal returned empty session, result={renewResponse?.Result}");
+                        return null;
+                    }
+
+                    if (renewResponse.Value.ExpireIn > 0 && renewResponse.Value.ExpireTime == 0)
+                    {
+                        renewResponse.Value.ExpireTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() +
+                            (renewResponse.Value.ExpireIn * 1000L);
+                    }
+
+                    logger.Info($"Token renewed, member_no={renewResponse.Value.Member?.MemberNo}");
+                    return renewResponse;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, "Error renewing token");
+                return null;
+            }
+        }
+
         private SessionResponse TryGetSessionFromMainPage(IWebView webView)
         {
             try
             {
                 webView.Navigate("https://store.onstove.com/");
                 Thread.Sleep(2000);
-
                 return ExtractSessionFromCookies(webView);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                logger.Debug(ex, "Failed to get session from main page");
                 return null;
             }
         }
@@ -101,12 +236,10 @@ namespace StoveLibrary.Services
 
                 webView.Navigate("https://store.onstove.com/");
                 Thread.Sleep(2000);
-
                 return ExtractSessionFromCookies(webView);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                logger.Debug(ex, "Failed to get session from account page");
                 return null;
             }
         }
@@ -115,9 +248,30 @@ namespace StoveLibrary.Services
         {
             var cookies = webView.GetCookies();
             var suatCookie = cookies.FirstOrDefault(c => c.Name == "SUAT");
+            var refreshToken = cookies.FirstOrDefault(c => c.Name == "RFT")?.Value
+                ?? cookies.FirstOrDefault(c => c.Name == "SURT")?.Value;
 
             if (suatCookie?.Value == null)
             {
+                if (!string.IsNullOrEmpty(refreshToken))
+                {
+                    var oldSuat = TryReconstructSuat(cookies);
+                    if (!string.IsNullOrEmpty(oldSuat))
+                    {
+                        return TryRenewSession(oldSuat, refreshToken);
+                    }
+                }
+
+                return null;
+            }
+
+            long expireTime = GetExpireTimeFromPld(cookies);
+
+            if (expireTime > 0 && DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() >= expireTime)
+            {
+                if (!string.IsNullOrEmpty(refreshToken))
+                    return TryRenewSession(suatCookie.Value, refreshToken);
+
                 return null;
             }
 
@@ -132,6 +286,8 @@ namespace StoveLibrary.Services
                 Value = new SessionValue
                 {
                     AccessToken = suatCookie.Value,
+                    RefreshToken = refreshToken,
+                    ExpireTime = expireTime,
                     Member = new Member
                     {
                         MemberNo = memberNo.Value
@@ -140,6 +296,53 @@ namespace StoveLibrary.Services
                 Message = "OK",
                 Result = "000"
             };
+        }
+
+        private long GetExpireTimeFromPld(System.Collections.Generic.IEnumerable<HttpCookie> cookies)
+        {
+            try
+            {
+                var pldCookie = cookies.FirstOrDefault(c => c.Name == "PLD");
+                if (pldCookie != null && !string.IsNullOrEmpty(pldCookie.Value))
+                {
+                    var pldJson = System.Text.Encoding.UTF8.GetString(
+                        Convert.FromBase64String(PadBase64(pldCookie.Value)));
+                    var pldData = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(pldJson);
+                    return (long)pldData.expire_time;
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            return 0;
+        }
+
+        private string TryReconstructSuat(System.Collections.Generic.IEnumerable<HttpCookie> cookies)
+        {
+            try
+            {
+                var hd = cookies.FirstOrDefault(c => c.Name == "HD")?.Value;
+                var pld = cookies.FirstOrDefault(c => c.Name == "PLD")?.Value;
+                var sign = cookies.FirstOrDefault(c => c.Name == "SIGN")?.Value;
+
+                if (!string.IsNullOrEmpty(hd) && !string.IsNullOrEmpty(pld) && !string.IsNullOrEmpty(sign))
+                {
+                    return $"{hd}.{pld}.{sign}";
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            return null;
+        }
+
+        private static string PadBase64(string base64)
+        {
+            var s = base64.Replace('-', '+').Replace('_', '/');
+            var padding = (4 - s.Length % 4) % 4;
+            return s + new string('=', padding);
         }
 
         private long? GetMemberNoFromCookiesWithRetry(IWebView webView, System.Collections.Generic.IEnumerable<HttpCookie> cookies)
@@ -153,7 +356,6 @@ namespace StoveLibrary.Services
             for (int i = 0; i < 3; i++)
             {
                 Thread.Sleep(1000);
-
                 cookies = webView.GetCookies();
                 memberNo = GetMemberNoFromCookies(cookies);
                 if (memberNo.HasValue)
@@ -174,9 +376,8 @@ namespace StoveLibrary.Services
                     return memberNo;
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                logger.Debug(ex, "Failed to get member number from store page");
             }
 
             return null;
@@ -189,14 +390,14 @@ namespace StoveLibrary.Services
                 var pldCookie = cookies.FirstOrDefault(c => c.Name == "PLD");
                 if (pldCookie != null && !string.IsNullOrEmpty(pldCookie.Value))
                 {
-                    var decodedJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(pldCookie.Value));
+                    var decodedJson = System.Text.Encoding.UTF8.GetString(
+                        Convert.FromBase64String(PadBase64(pldCookie.Value)));
                     var memberInfo = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(decodedJson);
                     return (long)memberInfo.member_no;
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                logger.Debug(ex, "Error parsing member number from PLD cookie");
             }
 
             try
@@ -207,20 +408,17 @@ namespace StoveLibrary.Services
                     var parts = suatCookie.Value.Split('.');
                     if (parts.Length >= 2)
                     {
-                        var payload = parts[1];
-                        var paddedPayload = payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '=');
-                        var decodedJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(paddedPayload));
+                        var decodedJson = System.Text.Encoding.UTF8.GetString(
+                            Convert.FromBase64String(PadBase64(parts[1])));
                         var memberInfo = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(decodedJson);
                         return (long)memberInfo.member_no;
                     }
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                logger.Debug(ex, "Error parsing member number from SUAT JWT");
             }
 
-            // Legacy fallback: try SUMT_INFO cookie (old format)
             try
             {
                 var sumtCookie = cookies.FirstOrDefault(c => c.Name == "SUMT_INFO");
@@ -232,9 +430,8 @@ namespace StoveLibrary.Services
                     return (long)memberInfo.member_no;
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                logger.Debug(ex, "Error parsing member number from SUMT_INFO cookie");
             }
 
             return null;
@@ -295,6 +492,8 @@ namespace StoveLibrary.Services
 
         public void Logout()
         {
+            ClearCachedSession();
+
             IWebView webView = null;
             try
             {
@@ -329,7 +528,6 @@ namespace StoveLibrary.Services
         {
             try
             {
-                // Delete auth cookies from all STOVE domains
                 var domains = new[]
                 {
                     "https://onstove.com",
@@ -339,7 +537,7 @@ namespace StoveLibrary.Services
                     "https://api.onstove.com"
                 };
 
-                var cookieNames = new[] { "SUAT", "PLD", "SUMT_INFO" };
+                var cookieNames = new[] { "SUAT", "PLD", "HD", "SIGN", "RFT", "SURT", "SUAT_EXPIRED_CHECK", "SUMT_INFO" };
 
                 foreach (var domain in domains)
                 {
@@ -349,14 +547,11 @@ namespace StoveLibrary.Services
                         {
                             webView.DeleteCookies(domain, cookieName);
                         }
-                        catch (Exception ex)
+                        catch (Exception)
                         {
-                            logger.Debug(ex, $"Failed to delete cookie {cookieName} from {domain}");
                         }
                     }
                 }
-
-                logger.Debug("Deleted STOVE auth cookies");
             }
             catch (Exception ex)
             {

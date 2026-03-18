@@ -16,13 +16,13 @@ namespace StoveLibrary.Services
         private readonly StoveStoreService storeService;
         private readonly StoveHttpService httpService;
 
-        public StoveApi(IPlayniteAPI playniteApi, StoveLibrarySettings pluginSettings)
+        public StoveApi(IPlayniteAPI playniteApi, StoveLibrarySettings pluginSettings, string dataPath = null)
         {
             api = playniteApi ?? throw new ArgumentNullException(nameof(playniteApi));
             var settings = pluginSettings ?? throw new ArgumentNullException(nameof(pluginSettings));
 
             httpService = new StoveHttpService();
-            authService = new StoveAuthService(api, settings);
+            authService = new StoveAuthService(api, settings, dataPath);
             gamesService = new StoveGamesService(httpService, authService);
             storeService = new StoveStoreService(api, settings, httpService);
         }

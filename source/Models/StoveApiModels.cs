@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 
 namespace StoveLibrary.Models
@@ -26,8 +27,14 @@ namespace StoveLibrary.Models
         [JsonProperty("refresh_token")]
         public string RefreshToken { get; set; }
 
+        [JsonProperty("expire_time")]
+        public long ExpireTime { get; set; }
+
         [JsonProperty("member")]
         public Member Member { get; set; }
+
+        public bool IsExpired => ExpireTime > 0 && DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() >= ExpireTime;
+        public bool IsExpiringSoon => ExpireTime > 0 && DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() >= (ExpireTime - 300000);
     }
 
     public class Member

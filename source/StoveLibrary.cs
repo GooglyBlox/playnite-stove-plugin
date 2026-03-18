@@ -40,7 +40,7 @@ namespace StoveLibrary
             };
             settingsVm = new StoveLibrarySettingsViewModel(this);
 
-            StoveApi = new StoveApi(api, settingsVm.Settings);
+            StoveApi = new StoveApi(api, settingsVm.Settings, GetPluginUserDataPath());
 
             gameMonitor = new StoveGameMonitor(api, settingsVm.Settings);
         }
@@ -72,7 +72,6 @@ namespace StoveLibrary
                         {
                             game.IsInstalled = true;
                             game.InstallDirectory = installInfo.InstallDirectory;
-                            logger.Debug($"Game {game.Name} is installed at {installInfo.InstallDirectory}");
                         }
                     }
                 }
@@ -115,7 +114,6 @@ namespace StoveLibrary
                     {
                         if (attempt == 0)
                         {
-                            logger.Info($"User not logged in on attempt {attempt + 1}, retrying...");
                             System.Threading.Thread.Sleep(2000);
                             continue;
                         }
@@ -126,12 +124,10 @@ namespace StoveLibrary
                     }
 
                     var games = StoveApi.GetOwnedGames();
-                    logger.Info($"Successfully retrieved {games.Count} games on attempt {attempt + 1}");
                     return games;
                 }
                 catch (StoveAuthenticationException authEx)
                 {
-                    logger.Warn(authEx, "Authentication expired, clearing session and prompting re-login");
                     try
                     {
                         StoveApi.Logout();
@@ -144,7 +140,6 @@ namespace StoveLibrary
                 }
                 catch (Exception ex)
                 {
-                    logger.Warn(ex, $"Attempt {attempt + 1} failed to get owned games");
                     if (attempt == 2)
                     {
                         throw;
