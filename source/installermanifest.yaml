@@ -1,5 +1,13 @@
 AddonId: 'StoveLibrary_2a62a584-2cc3-4220-8da6-cf4ac588a439'
 Packages:
+  - Version: 2.2
+    RequiredApiVersion: 6.12.0
+    ReleaseDate: 2026-03-18
+    PackageUrl: https://github.com/GooglyBlox/playnite-stove-plugin/releases/download/v2.2/StoveLibrary_2a62a584-2cc3-4220-8da6-cf4ac588a439_2_2.pext
+    Changelog:
+      - Fixed auth breaking after Playnite restart
+      - Fixed token renewal Content-Type causing silent failures
+      - Cleaned up logging
   - Version: 2.1
     RequiredApiVersion: 6.12.0
     ReleaseDate: 2025-12-21
