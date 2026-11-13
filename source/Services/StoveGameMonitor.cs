@@ -57,7 +57,7 @@ namespace StoveLibrary.Services
                     try
                     {
                         var runningProcesses = GetGameProcesses(installedGame);
-                        var gameKey = installedGame.DisplayName;
+                        var gameKey = installedGame.GameId ?? installedGame.DisplayName;
 
                         if (runningProcesses.Any())
                         {
@@ -65,7 +65,7 @@ namespace StoveLibrary.Services
 
                             if (!trackedGames.ContainsKey(gameKey))
                             {
-                                var playniteGame = FindPlayniteGame(installedGame.DisplayName);
+                                var playniteGame = FindPlayniteGame(installedGame.GameId, installedGame.DisplayName);
                                 if (playniteGame != null && !IsGameCurrentlyTrackedByPlaynite(playniteGame))
                                 {
                                     var trackingInfo = new GameTrackingInfo
@@ -93,7 +93,7 @@ namespace StoveLibrary.Services
                             var trackingInfo = trackedGames[gameKey];
                             var playTime = DateTime.Now.Subtract(trackingInfo.StartTime).TotalSeconds;
 
-                            var playniteGame = FindPlayniteGame(trackingInfo.GameName);
+                            var playniteGame = api.Database.Games[Guid.Parse(trackingInfo.GameId)];
                             if (playniteGame != null && trackingInfo.NotifiedStarted)
                             {
                                 NotifyGameStopped(playniteGame, (ulong)Math.Max(0, playTime));
@@ -114,7 +114,7 @@ namespace StoveLibrary.Services
                     var trackingInfo = trackedGames[key];
                     var playTime = DateTime.Now.Subtract(trackingInfo.StartTime).TotalSeconds;
 
-                    var playniteGame = FindPlayniteGame(trackingInfo.GameName);
+                    var playniteGame = api.Database.Games[Guid.Parse(trackingInfo.GameId)];
                     if (playniteGame != null && trackingInfo.NotifiedStarted)
                     {
                         NotifyGameStopped(playniteGame, (ulong)Math.Max(0, playTime));
@@ -218,13 +218,15 @@ namespace StoveLibrary.Services
             return processes;
         }
 
-        private Playnite.SDK.Models.Game FindPlayniteGame(string gameName)
+        private Playnite.SDK.Models.Game FindPlayniteGame(string gameId, string gameName)
         {
             try
             {
                 return api.Database.Games.FirstOrDefault(g =>
                     g.PluginId == Guid.Parse("2a62a584-2cc3-4220-8da6-cf4ac588a439") &&
-                    string.Equals(g.Name, gameName, StringComparison.OrdinalIgnoreCase));
+                    (string.IsNullOrEmpty(gameId)
+                        ? string.Equals(g.Name, gameName, StringComparison.OrdinalIgnoreCase)
+                        : string.Equals(g.GameId, gameId, StringComparison.OrdinalIgnoreCase)));
             }
             catch (Exception ex)
             {
@@ -287,7 +289,7 @@ namespace StoveLibrary.Services
                 {
                     try
                     {
-                        var playniteGame = FindPlayniteGame(tracking.GameName);
+                        var playniteGame = api.Database.Games[Guid.Parse(tracking.GameId)];
                         if (playniteGame != null && tracking.NotifiedStarted)
                         {
                             var playTime = DateTime.Now.Subtract(tracking.StartTime).TotalSeconds;

@@ -1,4 +1,4 @@
-﻿using StoveLibrary.Controllers;
+using StoveLibrary.Controllers;
 using StoveLibrary.Services;
 using StoveLibrary.Views;
 using Playnite.SDK;
@@ -65,8 +65,7 @@ namespace StoveLibrary
 
                     foreach (var game in allGames)
                     {
-                        var installInfo = installedGames.FirstOrDefault(ig =>
-                            string.Equals(ig.DisplayName, game.Name, StringComparison.OrdinalIgnoreCase));
+                        var installInfo = StoveRegistryHelper.FindInstallInfo(installedGames, game.GameId, game.Name);
 
                         if (installInfo != null)
                         {
@@ -206,9 +205,9 @@ namespace StoveLibrary
             }
         }
 
-        public StoveGameInstallInfo GetGameInstallInfo(string gameName)
+        public StoveGameInstallInfo GetGameInstallInfo(string gameId, string gameName)
         {
-            return StoveRegistryHelper.GetGameInstallInfo(gameName);
+            return StoveRegistryHelper.GetGameInstallInfo(gameId, gameName);
         }
 
         public override LibraryMetadataProvider GetMetadataDownloader() =>

@@ -62,7 +62,7 @@ namespace StoveLibrary.Controllers
                         return;
                     }
 
-                    var installInfo = stoveLibrary.GetGameInstallInfo(Game.Name);
+                    var installInfo = stoveLibrary.GetGameInstallInfo(Game.GameId, Game.Name);
                     if (installInfo != null && File.Exists(installInfo.ExecutablePath))
                     {
                         var gameInstallData = new GameInstallationData
@@ -101,7 +101,7 @@ namespace StoveLibrary.Controllers
         {
             Dispose();
 
-            var installInfo = stoveLibrary.GetGameInstallInfo(Game.Name);
+            var installInfo = stoveLibrary.GetGameInstallInfo(Game.GameId, Game.Name);
             if (installInfo != null && !string.IsNullOrEmpty(installInfo.UninstallString))
             {
                 try
@@ -185,7 +185,7 @@ namespace StoveLibrary.Controllers
                         return;
                     }
 
-                    var currentInstallInfo = stoveLibrary.GetGameInstallInfo(Game.Name);
+                    var currentInstallInfo = stoveLibrary.GetGameInstallInfo(Game.GameId, Game.Name);
                     if (currentInstallInfo == null ||
                         string.IsNullOrEmpty(currentInstallInfo.ExecutablePath) ||
                         !File.Exists(currentInstallInfo.ExecutablePath))
@@ -238,7 +238,7 @@ namespace StoveLibrary.Controllers
         {
             Dispose();
 
-            var installInfo = stoveLibrary.GetGameInstallInfo(Game.Name);
+            var installInfo = stoveLibrary.GetGameInstallInfo(Game.GameId, Game.Name);
             if (installInfo != null && File.Exists(installInfo.ExecutablePath))
             {
                 gameDirectory = installInfo.InstallDirectory;
@@ -248,12 +248,12 @@ namespace StoveLibrary.Controllers
                 {
                     ProcessStartInfo startInfo = new ProcessStartInfo
                     {
-                        FileName = installInfo.ExecutablePath,
+                        FileName = $"sgup://run/{Uri.EscapeDataString(Game.GameId)}?auto_action=PrepareAndLaunch",
                         WorkingDirectory = gameDirectory,
                         UseShellExecute = true
                     };
 
-                    Process.Start(startInfo);
+                    using (Process.Start(startInfo)) { }
                     StartGameProcessMonitoring();
                 }
                 catch (Exception ex)
@@ -339,6 +339,11 @@ namespace StoveLibrary.Controllers
                     trackedProcess = gameProcesses.First();
 
                     InvokeOnStarted(new GameStartedEventArgs() { StartedProcessId = trackedProcess.Id });
+                }
+                else if (!gameHasStarted && DateTime.Now - gameStartTime > TimeSpan.FromMinutes(2))
+                {
+                    processWatcher?.Dispose();
+                    InvokeOnStopped(new GameStoppedEventArgs());
                 }
                 else if (gameHasStarted && !gameProcesses.Any())
                 {
