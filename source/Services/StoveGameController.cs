@@ -248,6 +248,7 @@ namespace StoveLibrary.Controllers
                 {
                     ProcessStartInfo startInfo = new ProcessStartInfo
                     {
+                        // Use the same launch request as a STOVE-generated desktop shortcut.
                         FileName = $"sgup://run/{Uri.EscapeDataString(Game.GameId)}?auto_action=PrepareAndLaunch",
                         WorkingDirectory = gameDirectory,
                         UseShellExecute = true
@@ -340,6 +341,7 @@ namespace StoveLibrary.Controllers
 
                     InvokeOnStarted(new GameStartedEventArgs() { StartedProcessId = trackedProcess.Id });
                 }
+                // The launcher may exit without starting the game, for example if the user cancels the prompt.
                 else if (!gameHasStarted && DateTime.Now - gameStartTime > TimeSpan.FromMinutes(2))
                 {
                     processWatcher?.Dispose();

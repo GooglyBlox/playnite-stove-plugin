@@ -71,6 +71,7 @@ namespace StoveLibrary.Services
                                     var trackingInfo = new GameTrackingInfo
                                     {
                                         GameName = installedGame.DisplayName,
+                                        // Keep the Playnite record ID so stop events update the same entry.
                                         GameId = playniteGame.Id.ToString(),
                                         StartTime = DateTime.Now,
                                         Processes = runningProcesses,

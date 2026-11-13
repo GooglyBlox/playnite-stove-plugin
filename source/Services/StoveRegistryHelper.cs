@@ -26,6 +26,7 @@ namespace StoveLibrary
         {
             var installedGames = new List<StoveGameInstallInfo>();
 
+            // STOVE installations may be registered in either Windows registry view.
             foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
             {
                 try
@@ -114,6 +115,7 @@ namespace StoveLibrary
 
         public static StoveGameInstallInfo FindInstallInfo(IEnumerable<StoveGameInstallInfo> games, string gameId, string gameName)
         {
+            // Store titles can differ from installed titles. Match by name only for entries without an ID.
             return games.FirstOrDefault(g => !string.IsNullOrEmpty(g.GameId) &&
                 string.Equals(g.GameId, gameId, StringComparison.OrdinalIgnoreCase))
                 ?? games.FirstOrDefault(g => string.IsNullOrEmpty(g.GameId) &&
