@@ -1,5 +1,15 @@
 AddonId: 'StoveLibrary_2a62a584-2cc3-4220-8da6-cf4ac588a439'
 Packages:
+  - Version: 2.3
+    RequiredApiVersion: 6.12.0
+    ReleaseDate: 2026-11-15
+    PackageUrl: https://github.com/GooglyBlox/playnite-stove-plugin/releases/download/v2.3/StoveLibrary_2a62a584-2cc3-4220-8da6-cf4ac588a439_2_3.pext
+    Changelog:
+      - Fixed installed games not being detected after a STOVE client update
+      - Fixed games imported by older plugin versions not being detected
+      - Games now launch through the STOVE client
+      - Reduced background CPU usage from playtime tracking
+      - Fixed other programs being mistaken for a running game
   - Version: 2.2
     RequiredApiVersion: 6.12.0
     ReleaseDate: 2026-03-18
