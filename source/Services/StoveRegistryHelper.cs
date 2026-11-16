@@ -25,8 +25,9 @@ namespace StoveLibrary
         public static List<StoveGameInstallInfo> GetInstalledStoveGames(bool logResults = false)
         {
             var installedGames = new List<StoveGameInstallInfo>();
+            var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var anyViewHasKey = false;
 
-            // STOVE installations may be registered in either Windows registry view.
             foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
             {
                 try
@@ -35,11 +36,9 @@ namespace StoveLibrary
                     using (var uninstallKey = rootKey.OpenSubKey(UninstallRegistryPath))
                     {
                         if (uninstallKey == null)
-                        {
-                            if (logResults)
-                                logger.Warn("Uninstall registry key not found");
                             continue;
-                        }
+
+                        anyViewHasKey = true;
 
                         foreach (string subKeyName in uninstallKey.GetSubKeyNames())
                         {
@@ -48,6 +47,9 @@ namespace StoveLibrary
                             {
                                 continue;
                             }
+
+                            if (seenKeys.Contains(subKeyName))
+                                continue;
 
                             try
                             {
@@ -64,13 +66,7 @@ namespace StoveLibrary
                                     if (string.IsNullOrEmpty(displayName) || string.IsNullOrEmpty(displayIcon))
                                         continue;
 
-                                    var executablePath = displayIcon;
-                                    if (executablePath.Contains(","))
-                                    {
-                                        executablePath = executablePath.Split(',')[0];
-                                    }
-
-                                    executablePath = executablePath.Trim('"');
+                                    var executablePath = ParseDisplayIconPath(displayIcon);
 
                                     if (File.Exists(executablePath))
                                     {
@@ -85,6 +81,7 @@ namespace StoveLibrary
                                         };
 
                                         installedGames.Add(gameInfo);
+                                        seenKeys.Add(subKeyName);
                                         if (logResults)
                                             logger.Debug($"Found installed STOVE game: {displayName} at {executablePath}");
                                     }
@@ -104,7 +101,34 @@ namespace StoveLibrary
 
             }
 
+            if (!anyViewHasKey && logResults)
+                logger.Warn("Uninstall registry key not found in either registry view");
+
             return installedGames;
+        }
+
+        internal static string ParseDisplayIconPath(string displayIcon)
+        {
+            if (string.IsNullOrWhiteSpace(displayIcon))
+                return displayIcon;
+
+            var value = displayIcon.Trim();
+            if (value.StartsWith("\""))
+            {
+                var end = value.IndexOf('"', 1);
+                value = end > 0 ? value.Substring(1, end - 1) : value.Substring(1);
+            }
+
+            var comma = value.LastIndexOf(',');
+            if (comma >= 0)
+            {
+                var tail = value.Substring(comma + 1).Trim();
+                int index;
+                if (tail.Length == 0 || int.TryParse(tail, out index))
+                    value = value.Substring(0, comma);
+            }
+
+            return value.Trim().Trim('"');
         }
 
         public static StoveGameInstallInfo GetGameInstallInfo(string gameId, string gameName)
@@ -115,11 +139,21 @@ namespace StoveLibrary
 
         public static StoveGameInstallInfo FindInstallInfo(IEnumerable<StoveGameInstallInfo> games, string gameId, string gameName)
         {
-            // Store titles can differ from installed titles. Match by name only for entries without an ID.
-            return games.FirstOrDefault(g => !string.IsNullOrEmpty(g.GameId) &&
-                string.Equals(g.GameId, gameId, StringComparison.OrdinalIgnoreCase))
-                ?? games.FirstOrDefault(g => string.IsNullOrEmpty(g.GameId) &&
-                    string.Equals(g.DisplayName, gameName, StringComparison.OrdinalIgnoreCase));
+            if (games == null)
+                return null;
+
+            var list = games as IList<StoveGameInstallInfo> ?? games.ToList();
+            StoveGameInstallInfo byId = null;
+            if (!string.IsNullOrEmpty(gameId))
+            {
+                byId = list.FirstOrDefault(g => !string.IsNullOrEmpty(g.GameId) &&
+                    string.Equals(g.GameId, gameId, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (byId != null || string.IsNullOrEmpty(gameName))
+                return byId;
+
+            return list.FirstOrDefault(g => string.Equals(g.DisplayName, gameName, StringComparison.OrdinalIgnoreCase));
         }
     }
 }

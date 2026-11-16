@@ -94,6 +94,7 @@
     <Compile Include="Services\StoveRegistryHelper.cs" />
     <Compile Include="Services\StoveGameController.cs" />
     <Compile Include="Services\StoveGameMonitor.cs" />
+    <Compile Include="Services\StoveProcessHelper.cs" />
     <Compile Include="Views\StoveLibrarySettingsView.xaml.cs">
       <DependentUpon>StoveLibrarySettingsView.xaml</DependentUpon>
     </Compile>

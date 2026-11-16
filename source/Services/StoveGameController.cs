@@ -1,6 +1,7 @@
 using Playnite.SDK;
 using Playnite.SDK.Models;
 using Playnite.SDK.Plugins;
+using StoveLibrary.Services;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -11,6 +12,18 @@ using System.Threading.Tasks;
 
 namespace StoveLibrary.Controllers
 {
+    internal static class StoveLaunchUrl
+    {
+        public static string Build(string stoveGameId, bool prepareAndLaunch)
+        {
+            if (string.IsNullOrWhiteSpace(stoveGameId))
+                return null;
+
+            var url = "sgup://run/" + Uri.EscapeDataString(stoveGameId);
+            return prepareAndLaunch ? url + "?auto_action=PrepareAndLaunch" : url;
+        }
+    }
+
     public class StoveInstallController : InstallController
     {
         private static readonly ILogger logger = LogManager.GetLogger();
@@ -32,14 +45,16 @@ namespace StoveLibrary.Controllers
         {
             Dispose();
 
+            var url = StoveLaunchUrl.Build(Game.GameId, false);
+            if (url == null)
+            {
+                logger.Error($"Cannot install '{Game.Name}': no STOVE game ID");
+                return;
+            }
+
             try
             {
-                ProcessStartInfo startInfo = new ProcessStartInfo
-                {
-                    FileName = $"sgup://run/{Game.GameId}",
-                    UseShellExecute = true
-                };
-                Process.Start(startInfo);
+                using (Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true })) { }
             }
             catch (Exception ex)
             {
@@ -154,14 +169,17 @@ namespace StoveLibrary.Controllers
             }
             else
             {
+                var url = StoveLaunchUrl.Build(installInfo?.GameId, false) ?? StoveLaunchUrl.Build(Game.GameId, false);
+                if (url == null)
+                {
+                    logger.Error($"Cannot uninstall '{Game.Name}': no STOVE game ID");
+                    InvokeOnUninstalled(new GameUninstalledEventArgs());
+                    return;
+                }
+
                 try
                 {
-                    ProcessStartInfo startInfo = new ProcessStartInfo
-                    {
-                        FileName = $"sgup://run/{Game.GameId}",
-                        UseShellExecute = true
-                    };
-                    Process.Start(startInfo);
+                    using (Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true })) { }
                     StartUninstallWatcher();
                 }
                 catch (Exception ex)
@@ -203,14 +221,19 @@ namespace StoveLibrary.Controllers
     public class StovePlayController : PlayController
     {
         private static readonly ILogger logger = LogManager.GetLogger();
+
+        private const int LaunchTimeoutMinutes = 5;
+
         private readonly StoveLibrary stoveLibrary;
         private Timer processWatcher;
         private DateTime gameStartTime;
         private bool gameHasStarted = false;
         private string gameDirectory;
-        private Process trackedProcess;
         private string executableName;
-        private List<Process> allGameProcesses = new List<Process>();
+        private int trackedPid;
+        private int tickRunning;
+        private int stopRequested;
+        private int stopped;
 
         public StovePlayController(Game game, StoveLibrary library) : base(game)
         {
@@ -221,22 +244,14 @@ namespace StoveLibrary.Controllers
         public override void Dispose()
         {
             processWatcher?.Dispose();
-            trackedProcess?.Dispose();
-
-            foreach (var process in allGameProcesses)
-            {
-                try
-                {
-                    process?.Dispose();
-                }
-                catch { }
-            }
-            allGameProcesses.Clear();
+            processWatcher = null;
         }
 
         public override void Play(PlayActionArgs args)
         {
             Dispose();
+            Interlocked.Exchange(ref stopped, 0);
+            Interlocked.Exchange(ref stopRequested, 0);
 
             var installInfo = stoveLibrary.GetGameInstallInfo(Game.GameId, Game.Name);
             if (installInfo != null && File.Exists(installInfo.ExecutablePath))
@@ -244,12 +259,20 @@ namespace StoveLibrary.Controllers
                 gameDirectory = installInfo.InstallDirectory;
                 executableName = Path.GetFileNameWithoutExtension(installInfo.ExecutablePath);
 
+                var stoveId = !string.IsNullOrEmpty(installInfo.GameId) ? installInfo.GameId : Game.GameId;
+                var url = StoveLaunchUrl.Build(stoveId, true);
+                if (url == null)
+                {
+                    logger.Error($"Cannot start '{Game.Name}': no STOVE game ID");
+                    FireStopped(null);
+                    return;
+                }
+
                 try
                 {
                     ProcessStartInfo startInfo = new ProcessStartInfo
                     {
-                        // Use the same launch request as a STOVE-generated desktop shortcut.
-                        FileName = $"sgup://run/{Uri.EscapeDataString(Game.GameId)}?auto_action=PrepareAndLaunch",
+                        FileName = url,
                         WorkingDirectory = gameDirectory,
                         UseShellExecute = true
                     };
@@ -260,13 +283,13 @@ namespace StoveLibrary.Controllers
                 catch (Exception ex)
                 {
                     logger.Error(ex, $"Failed to start game: {Game.Name}");
-                    InvokeOnStopped(new GameStoppedEventArgs());
+                    FireStopped(null);
                 }
             }
             else
             {
                 logger.Error($"Game executable not found for: {Game.Name}");
-                InvokeOnStopped(new GameStoppedEventArgs());
+                FireStopped(null);
             }
         }
 
@@ -276,45 +299,56 @@ namespace StoveLibrary.Controllers
             {
                 logger.Info($"Manually stopping game: {Game.Name}");
 
-                var currentGameProcesses = GetGameProcesses();
+                Interlocked.Exchange(ref stopRequested, 1);
+                processWatcher?.Dispose();
+                processWatcher = null;
 
-                foreach (var process in currentGameProcesses)
+                var pids = FindGamePids(StoveProcessHelper.TakeSnapshot());
+
+                foreach (var pid in pids)
                 {
                     try
                     {
-                        if (!process.HasExited)
+                        using (var process = Process.GetProcessById(pid))
                         {
-                            logger.Info($"Killing process: {process.ProcessName} (PID: {process.Id})");
-                            process.Kill();
-
-                            if (!process.WaitForExit(3000))
+                            if (!process.HasExited)
                             {
-                                logger.Warn($"Process {process.ProcessName} (PID: {process.Id}) did not exit within timeout");
+                                logger.Info($"Killing process: {process.ProcessName} (PID: {pid})");
+                                process.Kill();
+
+                                if (!process.WaitForExit(3000))
+                                {
+                                    logger.Warn($"Process {process.ProcessName} (PID: {pid}) did not exit within timeout");
+                                }
                             }
                         }
                     }
                     catch (Exception ex)
                     {
-                        logger.Error(ex, $"Failed to kill process {process.ProcessName} (PID: {process.Id})");
+                        logger.Error(ex, $"Failed to kill process (PID: {pid})");
                     }
                 }
 
-                processWatcher?.Dispose();
-                processWatcher = null;
-
-                var playTime = 0.0;
-                if (gameHasStarted)
-                {
-                    playTime = DateTime.Now.Subtract(gameStartTime).TotalSeconds;
-                }
-
-                InvokeOnStopped(new GameStoppedEventArgs(Convert.ToUInt64(Math.Max(0, playTime))));
+                FireStopped(gameHasStarted ? DateTime.Now.Subtract(gameStartTime).TotalSeconds : (double?)null);
             }
             catch (Exception ex)
             {
                 logger.Error(ex, $"Error manually stopping game: {Game.Name}");
-                InvokeOnStopped(new GameStoppedEventArgs());
+                FireStopped(null);
             }
+        }
+
+        private void FireStopped(double? playTimeSeconds)
+        {
+            if (Interlocked.Exchange(ref stopped, 1) != 0)
+                return;
+
+            processWatcher?.Dispose();
+
+            if (playTimeSeconds.HasValue)
+                InvokeOnStopped(new GameStoppedEventArgs(Convert.ToUInt64(Math.Max(0, playTimeSeconds.Value))));
+            else
+                InvokeOnStopped(new GameStoppedEventArgs());
         }
 
         private void StartGameProcessMonitoring()
@@ -326,189 +360,65 @@ namespace StoveLibrary.Controllers
 
         private void CheckForGameProcesses(object state)
         {
+            if (Volatile.Read(ref stopped) != 0 || Volatile.Read(ref stopRequested) != 0)
+                return;
+            if (Interlocked.CompareExchange(ref tickRunning, 1, 0) != 0)
+                return;
+
             try
             {
-                var gameProcesses = GetGameProcesses();
+                var pids = FindGamePids(StoveProcessHelper.TakeSnapshot());
 
-                allGameProcesses.Clear();
-                allGameProcesses.AddRange(gameProcesses);
-
-                if (!gameHasStarted && gameProcesses.Any())
+                if (!gameHasStarted && pids.Count > 0)
                 {
                     gameHasStarted = true;
                     gameStartTime = DateTime.Now;
-                    trackedProcess = gameProcesses.First();
+                    trackedPid = pids[0];
 
-                    InvokeOnStarted(new GameStartedEventArgs() { StartedProcessId = trackedProcess.Id });
+                    InvokeOnStarted(new GameStartedEventArgs() { StartedProcessId = trackedPid });
                 }
-                // The launcher may exit without starting the game, for example if the user cancels the prompt.
-                else if (!gameHasStarted && DateTime.Now - gameStartTime > TimeSpan.FromMinutes(2))
+                else if (!gameHasStarted && DateTime.Now - gameStartTime > TimeSpan.FromMinutes(LaunchTimeoutMinutes))
                 {
-                    processWatcher?.Dispose();
-                    InvokeOnStopped(new GameStoppedEventArgs());
+                    FireStopped(null);
                 }
-                else if (gameHasStarted && !gameProcesses.Any())
+                else if (gameHasStarted && pids.Count == 0)
                 {
-                    processWatcher?.Dispose();
-                    var playTime = DateTime.Now.Subtract(gameStartTime).TotalSeconds;
-
-                    InvokeOnStopped(new GameStoppedEventArgs(Convert.ToUInt64(Math.Max(0, playTime))));
+                    FireStopped(DateTime.Now.Subtract(gameStartTime).TotalSeconds);
                 }
-                else if (gameHasStarted && trackedProcess != null)
+                else if (gameHasStarted && !pids.Contains(trackedPid))
                 {
-                    try
-                    {
-                        if (trackedProcess.HasExited)
-                        {
-                            if (!gameProcesses.Any())
-                            {
-                                processWatcher?.Dispose();
-                                var playTime = DateTime.Now.Subtract(gameStartTime).TotalSeconds;
-
-                                InvokeOnStopped(new GameStoppedEventArgs(Convert.ToUInt64(Math.Max(0, playTime))));
-                            }
-                            else
-                            {
-                                trackedProcess?.Dispose();
-                                trackedProcess = gameProcesses.First();
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.Error(ex, "Error checking tracked process status");
-                    }
+                    trackedPid = pids[0];
                 }
             }
             catch (Exception ex)
             {
                 logger.Error(ex, "Error in game process monitoring");
-                processWatcher?.Dispose();
-                InvokeOnStopped(new GameStoppedEventArgs());
+                FireStopped(null);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref tickRunning, 0);
             }
         }
 
-        private List<Process> GetGameProcesses()
+        private List<int> FindGamePids(List<StoveProcessInfo> snapshot)
         {
-            var processes = new List<Process>();
-
             try
             {
-                var processesByDirectory = GetProcessesInDirectory(gameDirectory);
-                processes.AddRange(processesByDirectory);
+                var matches = StoveProcessHelper.FindByDirectory(snapshot, gameDirectory);
 
-                if (!processes.Any())
-                {
-                    var processesByName = GetProcessesByName(executableName);
-                    processes.AddRange(processesByName);
-                }
+                // Same-named exes with a readable path outside the install dir are other programs.
+                if (matches.Count == 0 && !string.IsNullOrEmpty(executableName))
+                    matches = StoveProcessHelper.FindByExactName(
+                        snapshot.Where(p => string.IsNullOrEmpty(p.ImagePath)), executableName);
 
-                if (!processes.Any())
-                {
-                    var gameNameParts = Game.Name.Split(' ', '-', '_');
-                    foreach (var part in gameNameParts)
-                    {
-                        if (part.Length > 3)
-                        {
-                            var relatedProcesses = Process.GetProcesses()
-                                .Where(p => p.ProcessName.IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0)
-                                .ToList();
-                            processes.AddRange(relatedProcesses);
-                        }
-                    }
-                }
-
-                processes = processes.GroupBy(p => p.Id).Select(g => g.First()).ToList();
+                return matches.Select(p => p.Pid).Distinct().ToList();
             }
             catch (Exception ex)
             {
                 logger.Error(ex, "Error getting game processes");
+                return new List<int>();
             }
-
-            return processes;
-        }
-
-        private List<Process> GetProcessesInDirectory(string directory)
-        {
-            var processes = new List<Process>();
-
-            try
-            {
-                var allProcesses = Process.GetProcesses();
-
-                foreach (var process in allProcesses)
-                {
-                    try
-                    {
-                        if (process.Id <= 4)
-                            continue;
-
-                        string processPath = null;
-                        try
-                        {
-                            processPath = process.MainModule?.FileName;
-                        }
-                        catch
-                        {
-                            try
-                            {
-                                processPath = process.StartInfo?.FileName;
-                            }
-                            catch
-                            {
-                                continue;
-                            }
-                        }
-
-                        if (!string.IsNullOrEmpty(processPath))
-                        {
-                            var processDirectory = Path.GetDirectoryName(processPath);
-
-                            if (!string.IsNullOrEmpty(processDirectory) &&
-                                (string.Equals(processDirectory, directory, StringComparison.OrdinalIgnoreCase) ||
-                                 processDirectory.StartsWith(directory, StringComparison.OrdinalIgnoreCase)))
-                            {
-                                processes.Add(process);
-                            }
-                        }
-                    }
-                    catch
-                    {
-                        continue;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.Error(ex, "Error getting processes in directory");
-            }
-
-            return processes;
-        }
-
-        private List<Process> GetProcessesByName(string executableName)
-        {
-            var processes = new List<Process>();
-
-            try
-            {
-                var exactMatches = Process.GetProcessesByName(executableName);
-                processes.AddRange(exactMatches);
-
-                if (!processes.Any())
-                {
-                    var allProcesses = Process.GetProcesses();
-                    var partialMatches = allProcesses.Where(p =>
-                        p.ProcessName.IndexOf(executableName, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
-                    processes.AddRange(partialMatches);
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.Error(ex, $"Error getting processes by name '{executableName}'");
-            }
-
-            return processes;
         }
     }
 }

@@ -1,7 +1,6 @@
 using Playnite.SDK;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -19,13 +18,14 @@ namespace StoveLibrary.Services
         private DateTime lastGameListRefresh = DateTime.MinValue;
         private readonly TimeSpan gameListRefreshInterval = TimeSpan.FromMinutes(5);
         private bool disposed = false;
+        private int tickRunning;
 
         private class GameTrackingInfo
         {
             public string GameName { get; set; }
             public string GameId { get; set; }
             public DateTime StartTime { get; set; }
-            public List<Process> Processes { get; set; } = new List<Process>();
+            public List<int> ProcessIds { get; set; } = new List<int>();
             public bool NotifiedStarted { get; set; }
         }
 
@@ -43,23 +43,30 @@ namespace StoveLibrary.Services
 
         private void MonitorRunningGames(object state)
         {
+            if (Interlocked.CompareExchange(ref tickRunning, 1, 0) != 0)
+                return;
+
             try
             {
-                if (!settings.ConnectAccount)
+                if (disposed || !settings.ConnectAccount)
                     return;
 
                 RefreshInstalledGamesIfNeeded();
 
+                if (cachedInstalledGames.Count == 0 && trackedGames.Count == 0)
+                    return;
+
+                var snapshot = StoveProcessHelper.TakeSnapshot();
                 var currentlyTracked = new HashSet<string>();
 
                 foreach (var installedGame in cachedInstalledGames)
                 {
                     try
                     {
-                        var runningProcesses = GetGameProcesses(installedGame);
+                        var runningPids = GetGameProcessIds(snapshot, installedGame);
                         var gameKey = installedGame.GameId ?? installedGame.DisplayName;
 
-                        if (runningProcesses.Any())
+                        if (runningPids.Count > 0)
                         {
                             currentlyTracked.Add(gameKey);
 
@@ -71,36 +78,26 @@ namespace StoveLibrary.Services
                                     var trackingInfo = new GameTrackingInfo
                                     {
                                         GameName = installedGame.DisplayName,
-                                        // Keep the Playnite record ID so stop events update the same entry.
                                         GameId = playniteGame.Id.ToString(),
                                         StartTime = DateTime.Now,
-                                        Processes = runningProcesses,
+                                        ProcessIds = runningPids,
                                         NotifiedStarted = false
                                     };
 
                                     trackedGames[gameKey] = trackingInfo;
 
-                                    NotifyGameStarted(playniteGame, runningProcesses.First().Id);
+                                    NotifyGameStarted(playniteGame, runningPids[0]);
                                     trackingInfo.NotifiedStarted = true;
                                 }
                             }
                             else
                             {
-                                trackedGames[gameKey].Processes = runningProcesses;
+                                trackedGames[gameKey].ProcessIds = runningPids;
                             }
                         }
                         else if (trackedGames.ContainsKey(gameKey))
                         {
-                            var trackingInfo = trackedGames[gameKey];
-                            var playTime = DateTime.Now.Subtract(trackingInfo.StartTime).TotalSeconds;
-
-                            var playniteGame = api.Database.Games[Guid.Parse(trackingInfo.GameId)];
-                            if (playniteGame != null && trackingInfo.NotifiedStarted)
-                            {
-                                NotifyGameStopped(playniteGame, (ulong)Math.Max(0, playTime));
-                            }
-
-                            trackedGames.Remove(gameKey);
+                            StopTracking(gameKey);
                         }
                     }
                     catch (Exception ex)
@@ -112,21 +109,32 @@ namespace StoveLibrary.Services
                 var keysToRemove = trackedGames.Keys.Where(k => !currentlyTracked.Contains(k)).ToList();
                 foreach (var key in keysToRemove)
                 {
-                    var trackingInfo = trackedGames[key];
-                    var playTime = DateTime.Now.Subtract(trackingInfo.StartTime).TotalSeconds;
-
-                    var playniteGame = api.Database.Games[Guid.Parse(trackingInfo.GameId)];
-                    if (playniteGame != null && trackingInfo.NotifiedStarted)
-                    {
-                        NotifyGameStopped(playniteGame, (ulong)Math.Max(0, playTime));
-                    }
-
-                    trackedGames.Remove(key);
+                    StopTracking(key);
                 }
             }
             catch (Exception ex)
             {
                 logger.Error(ex, "Error in game monitoring");
+            }
+            finally
+            {
+                Interlocked.Exchange(ref tickRunning, 0);
+            }
+        }
+
+        private void StopTracking(string gameKey)
+        {
+            GameTrackingInfo trackingInfo;
+            if (!trackedGames.TryGetValue(gameKey, out trackingInfo))
+                return;
+
+            trackedGames.Remove(gameKey);
+
+            var playTime = DateTime.Now.Subtract(trackingInfo.StartTime).TotalSeconds;
+            var playniteGame = api.Database.Games[Guid.Parse(trackingInfo.GameId)];
+            if (playniteGame != null && trackingInfo.NotifiedStarted)
+            {
+                NotifyGameStopped(playniteGame, (ulong)Math.Max(0, playTime));
             }
         }
 
@@ -139,95 +147,29 @@ namespace StoveLibrary.Services
             }
         }
 
-        private List<Process> GetGameProcesses(StoveGameInstallInfo gameInfo)
+        private static List<int> GetGameProcessIds(List<StoveProcessInfo> snapshot, StoveGameInstallInfo gameInfo)
         {
-            var processes = new List<Process>();
+            var pids = new List<int>();
 
             try
             {
-                var processesByDirectory = GetProcessesInDirectory(gameInfo.InstallDirectory);
-                processes.AddRange(processesByDirectory);
-
-                if (File.Exists(gameInfo.ExecutablePath))
-                {
-                    var executableName = Path.GetFileNameWithoutExtension(gameInfo.ExecutablePath);
-                    var processesByName = Process.GetProcessesByName(executableName);
-                    processes.AddRange(processesByName);
-                }
-
-                processes = processes.GroupBy(p => p.Id).Select(g => g.First()).ToList();
+                pids = StoveProcessHelper.FindByDirectory(snapshot, gameInfo.InstallDirectory)
+                    .Select(p => p.Pid).Distinct().ToList();
             }
             catch (Exception ex)
             {
                 logger.Error(ex, $"Error getting processes for game: {gameInfo.DisplayName}");
             }
 
-            return processes;
-        }
-
-        private List<Process> GetProcessesInDirectory(string directory)
-        {
-            var processes = new List<Process>();
-
-            if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
-                return processes;
-
-            try
-            {
-                var allProcesses = Process.GetProcesses();
-
-                foreach (var process in allProcesses)
-                {
-                    try
-                    {
-                        if (process.Id <= 4)
-                            continue;
-
-                        string processPath = null;
-                        try
-                        {
-                            processPath = process.MainModule?.FileName;
-                        }
-                        catch
-                        {
-                            continue;
-                        }
-
-                        if (!string.IsNullOrEmpty(processPath))
-                        {
-                            var processDirectory = Path.GetDirectoryName(processPath);
-
-                            if (!string.IsNullOrEmpty(processDirectory) &&
-                                (string.Equals(processDirectory, directory, StringComparison.OrdinalIgnoreCase) ||
-                                 processDirectory.StartsWith(directory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
-                            {
-                                processes.Add(process);
-                            }
-                        }
-                    }
-                    catch
-                    {
-                        continue;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.Error(ex, "Error getting processes in directory");
-            }
-
-            return processes;
+            return pids;
         }
 
         private Playnite.SDK.Models.Game FindPlayniteGame(string gameId, string gameName)
         {
             try
             {
-                return api.Database.Games.FirstOrDefault(g =>
-                    g.PluginId == Guid.Parse("2a62a584-2cc3-4220-8da6-cf4ac588a439") &&
-                    (string.IsNullOrEmpty(gameId)
-                        ? string.Equals(g.Name, gameName, StringComparison.OrdinalIgnoreCase)
-                        : string.Equals(g.GameId, gameId, StringComparison.OrdinalIgnoreCase)));
+                var pluginGames = api.Database.Games.Where(g => g.PluginId == StoveLibrary.PluginGuid);
+                return SelectPlayniteGame(pluginGames, gameId, gameName);
             }
             catch (Exception ex)
             {
@@ -236,11 +178,32 @@ namespace StoveLibrary.Services
             }
         }
 
+        internal static Playnite.SDK.Models.Game SelectPlayniteGame(IEnumerable<Playnite.SDK.Models.Game> pluginGames, string gameId, string gameName)
+        {
+            if (pluginGames == null)
+                return null;
+
+            var list = pluginGames as IList<Playnite.SDK.Models.Game> ?? pluginGames.ToList();
+
+            if (!string.IsNullOrEmpty(gameId))
+            {
+                var byId = list.FirstOrDefault(g => !string.IsNullOrEmpty(g.GameId) &&
+                    string.Equals(g.GameId, gameId, StringComparison.OrdinalIgnoreCase));
+                if (byId != null)
+                    return byId;
+            }
+
+            if (string.IsNullOrEmpty(gameName))
+                return null;
+
+            return list.FirstOrDefault(g => string.Equals(g.Name, gameName, StringComparison.OrdinalIgnoreCase));
+        }
+
         private bool IsGameCurrentlyTrackedByPlaynite(Playnite.SDK.Models.Game game)
         {
             try
             {
-                return game.IsRunning;
+                return game.IsRunning || game.IsLaunching;
             }
             catch
             {

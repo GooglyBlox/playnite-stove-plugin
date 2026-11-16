@@ -1,4 +1,4 @@
-using StoveLibrary.Controllers;
+﻿using StoveLibrary.Controllers;
 using StoveLibrary.Services;
 using StoveLibrary.Views;
 using Playnite.SDK;
@@ -19,7 +19,9 @@ namespace StoveLibrary
         private static readonly ILogger logger = LogManager.GetLogger();
         private static Dictionary<Guid, StovePlayController> activeControllers = new Dictionary<Guid, StovePlayController>();
 
-        public override Guid Id => Guid.Parse("2a62a584-2cc3-4220-8da6-cf4ac588a439");
+        internal static readonly Guid PluginGuid = Guid.Parse("2a62a584-2cc3-4220-8da6-cf4ac588a439");
+
+        public override Guid Id => PluginGuid;
         public override string Name => "STOVE";
         public override string LibraryIcon => Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "icon.png");
 

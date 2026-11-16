@@ -51,7 +51,9 @@ namespace StoveLibrary.Services
                 var games = GetOwnedGamesFromApi(memberNo, accessToken);
                 logger.Info($"Found {games.Count} owned games.");
 
-                var existingGames = api.Database.Games.Where(g => g.PluginId == Guid.Parse("2a62a584-2cc3-4220-8da6-cf4ac588a439")).ToList();
+                var existingGames = api.Database.Games.Where(g => g.PluginId == StoveLibrary.PluginGuid).ToList();
+
+                MigrateLegacyGameIds(existingGames, games);
 
                 foreach (var game in games)
                 {
@@ -105,6 +107,67 @@ namespace StoveLibrary.Services
             }
 
             return owned;
+        }
+
+        // Old plugin versions stored product_no as GameId.
+        internal static List<KeyValuePair<Game, string>> PlanLegacyIdMigrations(IEnumerable<Game> existingGames, List<StoveGameData> apiGames)
+        {
+            var plan = new List<KeyValuePair<Game, string>>();
+            if (existingGames == null || apiGames == null)
+                return plan;
+
+            var existing = existingGames.Where(g => g != null).ToList();
+            var usedIds = new HashSet<string>(
+                existing.Where(g => !string.IsNullOrEmpty(g.GameId)).Select(g => g.GameId),
+                StringComparer.OrdinalIgnoreCase);
+            var plannedGames = new HashSet<Game>();
+
+            foreach (var item in apiGames)
+            {
+                if (item == null || !item.HasOwnership || string.IsNullOrWhiteSpace(item.GameId))
+                    continue;
+
+                var legacyId = item.ProductNo.ToString();
+                if (usedIds.Contains(item.GameId))
+                    continue;
+
+                var legacyGame = existing.FirstOrDefault(g => !plannedGames.Contains(g) && g.GameId == legacyId);
+                if (legacyGame == null)
+                    continue;
+
+                plannedGames.Add(legacyGame);
+                usedIds.Add(item.GameId);
+                plan.Add(new KeyValuePair<Game, string>(legacyGame, item.GameId));
+            }
+
+            return plan;
+        }
+
+        private void MigrateLegacyGameIds(List<Game> existingGames, List<StoveGameData> apiGames)
+        {
+            var plan = PlanLegacyIdMigrations(existingGames, apiGames);
+            if (plan.Count == 0)
+                return;
+
+            using (api.Database.BufferedUpdate())
+            {
+                foreach (var entry in plan)
+                {
+                    var game = entry.Key;
+                    var oldId = game.GameId;
+                    try
+                    {
+                        game.GameId = entry.Value;
+                        api.Database.Games.Update(game);
+                        logger.Info($"Migrated legacy GameId for '{game.Name}': {oldId} -> {entry.Value}");
+                    }
+                    catch (Exception ex)
+                    {
+                        game.GameId = oldId;
+                        logger.Error(ex, $"Failed to migrate legacy GameId for '{game.Name}'");
+                    }
+                }
+            }
         }
 
         public SessionResponse GetSessionData()
